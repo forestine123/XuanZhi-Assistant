@@ -1,13 +1,76 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Spin, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import zhCNX from '@ant-design/x/locale/zh_CN';
 import { XProvider } from '@ant-design/x';
 
 import { AssistantShell } from './components/assistant/AssistantShell';
 import { AuthScreen } from './components/auth/AuthScreen';
+import * as authApi from './services/authApi';
+import { clearAuthToken, getAuthToken, persistLogin } from './stores/authStore';
+import type { User } from './types/protocol';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User>();
+  const [token, setToken] = useState(() => getAuthToken() ?? '');
+  const [checkingSession, setCheckingSession] = useState(Boolean(token));
+  const [authLoading, setAuthLoading] = useState(false);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let cancelled = false;
+    authApi
+      .me()
+      .then(({ user }) => {
+        if (!cancelled) {
+          setCurrentUser(user);
+        }
+      })
+      .catch(() => {
+        clearAuthToken();
+        if (!cancelled) {
+          setToken('');
+          setCurrentUser(undefined);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCheckingSession(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const login = useCallback(async (values: { email: string; password: string }) => {
+    setAuthLoading(true);
+    try {
+      const response = await authApi.login(values);
+      persistLogin(response);
+      setToken(response.token);
+      setCurrentUser(response.user);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '登录失败');
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Local cleanup still runs if the token is already invalid.
+    }
+    clearAuthToken();
+    setToken('');
+    setCurrentUser(undefined);
+  }, []);
 
   return (
     <XProvider
@@ -21,10 +84,14 @@ function App() {
         },
       }}
     >
-      {isAuthenticated ? (
-        <AssistantShell onLogout={() => setIsAuthenticated(false)} />
+      {checkingSession ? (
+        <main className="app-loading">
+          <Spin size="large" />
+        </main>
+      ) : currentUser && token ? (
+        <AssistantShell currentUser={currentUser} token={token} onLogout={logout} />
       ) : (
-        <AuthScreen onAuthenticated={() => setIsAuthenticated(true)} />
+        <AuthScreen loading={authLoading} onAuthenticated={login} />
       )}
     </XProvider>
   );

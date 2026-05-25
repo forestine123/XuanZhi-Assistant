@@ -1,11 +1,14 @@
 import { CopyOutlined, EditOutlined } from '@ant-design/icons';
 import { Button, Tooltip } from 'antd';
 
-import type { ChatMessage } from '../../types/chat';
 import { formatMessageTime } from '../../utils/time';
 
 type MessageActionsProps = {
-  message: ChatMessage;
+  message: {
+    role: 'assistant' | 'system' | 'user';
+    content: string;
+    createdAt: string | number;
+  };
   onCopy: (content: string) => void;
   onEdit: (content: string) => void;
 };

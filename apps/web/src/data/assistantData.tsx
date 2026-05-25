@@ -52,8 +52,8 @@ export const promptItems: PromptItem[] = [
   {
     key: 'prd',
     icon: <BulbOutlined />,
-    label: '生成产品方案',
-    description: '整理模块、页面和流程',
+    label: '预约复盘会议',
+    description: '下周三上午约张三',
   },
   {
     key: 'kb',
@@ -76,7 +76,7 @@ export const promptItems: PromptItem[] = [
 ];
 
 export const promptDrafts: Record<string, string> = {
-  prd: '帮我生成一个企业级助手系统的产品方案，包含核心模块、页面结构和交互流程。',
+  prd: '下周三上午帮我预约张三开项目复盘会',
   kb: '基于上传的知识库资料，回答用户问题时如何展示来源和置信度？',
   agent: '帮我设计一个 Agent 编排流程，包含意图识别、工具选择、执行和结果归纳。',
   review: '检查这个助手界面的信息架构、交互状态和视觉层级，并提出优化建议。',

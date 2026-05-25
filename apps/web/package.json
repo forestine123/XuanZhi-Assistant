@@ -1,5 +1,5 @@
 {
-  "name": "xuanzhi-assistant-ui",
+  "name": "@xuanzhi/web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@xuanzhi/shared": "workspace:*",
     "@ant-design/icons": "^5.6.1",
     "@ant-design/x": "^2.7.0",
     "antd": "^6.1.1",

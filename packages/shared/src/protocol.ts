@@ -1,0 +1,95 @@
+export type User = {
+  id: string;
+  name: string;
+  email?: string;
+  createdAt: string;
+};
+
+export type AuthSession = {
+  id: string;
+  userId: string;
+  token: string;
+  createdAt: string;
+  expiresAt?: string;
+};
+
+export type TaskStatus = 'created' | 'planning' | 'running' | 'waiting_approval' | 'completed' | 'failed';
+
+export type TaskIntent = 'meeting' | 'business' | 'coding' | 'qa' | 'general';
+
+export type Task = {
+  id: string;
+  userId: string;
+  title: string;
+  userInput: string;
+  intent: TaskIntent;
+  status: TaskStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Message = {
+  id: string;
+  userId: string;
+  taskId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  createdAt: string;
+};
+
+export type AgentEventStatus = 'pending' | 'running' | 'success' | 'error' | 'waiting';
+
+export type AgentEvent = {
+  id: string;
+  userId: string;
+  taskId: string;
+  type: string;
+  title: string;
+  message?: string;
+  status?: AgentEventStatus;
+  payload?: unknown;
+  createdAt: string;
+};
+
+export type ArtifactType = 'plan' | 'meeting_draft' | 'code_diff' | 'report' | 'tool_result' | 'final_answer';
+
+export type ArtifactFormat = 'markdown' | 'json' | 'diff' | 'text';
+
+export type Artifact = {
+  id: string;
+  userId: string;
+  taskId: string;
+  type: ArtifactType;
+  title: string;
+  format: ArtifactFormat;
+  content: unknown;
+  createdAt: string;
+};
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+export type Approval = {
+  id: string;
+  userId: string;
+  taskId: string;
+  title: string;
+  description: string;
+  action: string;
+  payload: unknown;
+  status: ApprovalStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StreamEvent =
+  | { type: 'task.updated'; data: Task }
+  | { type: 'message.created'; data: Message }
+  | { type: 'agent.event.created'; data: AgentEvent }
+  | { type: 'artifact.created'; data: Artifact }
+  | { type: 'approval.requested'; data: Approval }
+  | { type: 'approval.updated'; data: Approval };
+
+export type LoginResponse = {
+  token: string;
+  user: User;
+};

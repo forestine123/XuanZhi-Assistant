@@ -1,0 +1,17 @@
+{
+  "name": "@xuanzhi/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/protocol.js",
+    "./protocol": "./dist/protocol.js"
+  },
+  "types": "./dist/protocol.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

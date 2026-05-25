@@ -14,6 +14,25 @@
   .assistant-sidebar-panel {
     width: 232px;
   }
+
+  .task-workspace {
+    --agent-workspace-panel-width: 100%;
+
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-workspace {
+    min-height: 360px;
+  }
+
+  .agent-workspace-panel {
+    width: 100%;
+  }
+
+  .task-workspace.is-workspace-collapsed .agent-workspace {
+    min-height: 0;
+    max-height: 0;
+  }
 }
 
 @media (max-width: 920px) {
@@ -88,6 +107,18 @@
   .composer-area {
     padding-right: 14px;
     padding-left: 14px;
+  }
+
+  .workspace-body.is-task {
+    overflow: auto;
+  }
+
+  .task-workspace {
+    height: auto;
+  }
+
+  .workspace-title span {
+    max-width: 180px;
   }
 
   .home-canvas {

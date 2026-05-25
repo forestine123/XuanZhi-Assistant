@@ -1,0 +1,7 @@
+{
+  "id": "xuanzhi-artifacts",
+  "name": "Xuanzhi Artifacts",
+  "description": "Emit Xuanzhi task events, artifacts, approvals, and task status updates.",
+  "version": "0.1.0",
+  "main": "dist/index.js"
+}

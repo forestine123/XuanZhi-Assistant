@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
+*.tsbuildinfo.*
+
+# Test and coverage output
+coverage/
+**/coverage/
+test-results/
+playwright-report/
+.nyc_output/
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Tool caches
+.cache/
+**/.cache/
+.vite/
+**/.vite/
+.vite-temp/
+**/.vite-temp/
+.turbo/
+
+# Generated test artifacts
+apps/api/test/*.js
+apps/api/test/*.d.ts
+
+# OS and editor local state
+.DS_Store
+Thumbs.db
+.codex
+.agents/
+.idea/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

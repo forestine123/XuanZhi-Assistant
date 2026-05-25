@@ -1,22 +1,52 @@
 import { useState } from 'react';
-import { Avatar, Button, Modal, Popover, Typography } from 'antd';
+import type { ReactNode } from 'react';
+import { Avatar, Button, Modal, Popover, Tag, Typography } from 'antd';
 import { Conversations } from '@ant-design/x';
-import { LogoutOutlined, MoreOutlined, PlusOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
+  LoadingOutlined,
+  LogoutOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  SettingOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 
 import { BrandLockup } from '../brand/BrandLockup';
-import { conversationItems } from '../../data/assistantData';
+import type { Task, User } from '../../types/protocol';
 
 const { Text } = Typography;
 
 type SidebarProps = {
-  activeKey: string;
+  activeKey?: string;
   collapsed: boolean;
-  onActiveChange: (key: string) => void;
+  currentUser: User;
+  tasks: Task[];
+  onActiveChange: (taskId: string) => void;
   onCreateConversation: () => void;
   onLogout: () => void;
 };
 
-export function Sidebar({ activeKey, collapsed, onActiveChange, onCreateConversation, onLogout }: SidebarProps) {
+const taskStatusMeta = {
+  created: { label: '已创建', icon: <ClockCircleOutlined />, color: 'default' },
+  planning: { label: '规划中', icon: <LoadingOutlined />, color: 'processing' },
+  running: { label: '执行中', icon: <LoadingOutlined />, color: 'processing' },
+  waiting_approval: { label: '等待确认', icon: <ClockCircleOutlined />, color: 'warning' },
+  completed: { label: '已完成', icon: <CheckCircleOutlined />, color: 'success' },
+  failed: { label: '失败', icon: <CloseCircleOutlined />, color: 'error' },
+} satisfies Record<Task['status'], { label: string; icon: ReactNode; color: string }>;
+
+export function Sidebar({
+  activeKey,
+  collapsed,
+  currentUser,
+  tasks,
+  onActiveChange,
+  onCreateConversation,
+  onLogout,
+}: SidebarProps) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -47,6 +77,13 @@ export function Sidebar({ activeKey, collapsed, onActiveChange, onCreateConversa
     </div>
   );
 
+  const conversationItems = tasks.map((task) => ({
+    key: task.id,
+    label: task.title,
+    group: taskStatusMeta[task.status].label,
+    icon: taskStatusMeta[task.status].icon,
+  }));
+
   return (
     <aside className="assistant-sidebar" aria-hidden={collapsed}>
       <div className="assistant-sidebar-panel">
@@ -64,21 +101,14 @@ export function Sidebar({ activeKey, collapsed, onActiveChange, onCreateConversa
             collapsible: true,
             defaultExpandedKeys: ['今天', '昨天'],
           }}
-          menu={{
-            items: [
-              { key: 'rename', label: '重命名' },
-              { key: 'archive', label: '归档' },
-            ],
-            trigger: <MoreOutlined />,
-          }}
           onActiveChange={onActiveChange}
         />
 
         <div className="sidebar-footer">
           <Avatar size={28} icon={<UserOutlined />} />
           <div className="sidebar-footer-copy">
-            <Text strong>张工</Text>
-            <Text type="secondary">企业空间</Text>
+            <Text strong>{currentUser.name}</Text>
+            <Tag color="blue">{currentUser.email}</Tag>
           </div>
           <Popover
             trigger="click"
@@ -103,11 +133,11 @@ export function Sidebar({ activeKey, collapsed, onActiveChange, onCreateConversa
         <div className="sidebar-settings-panel">
           <div>
             <Text type="secondary">当前账号</Text>
-            <Text strong>张工</Text>
+            <Text strong>{currentUser.name}</Text>
           </div>
           <div>
-            <Text type="secondary">空间</Text>
-            <Text strong>企业空间</Text>
+            <Text type="secondary">邮箱</Text>
+            <Text strong>{currentUser.email}</Text>
           </div>
         </div>
       </Modal>

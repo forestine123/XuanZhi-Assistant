@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Bubble } from '@ant-design/x';
 
-import type { ChatMessage } from '../../types/chat';
+import type { Message } from '../../types/protocol';
 import { MessageActions } from './MessageActions';
 
 const bubbleRoles = {
@@ -35,7 +35,7 @@ const bubbleRoles = {
 };
 
 type ChatCanvasProps = {
-  messages: ChatMessage[];
+  messages: Message[];
   onCopyMessage: (content: string) => void;
   onEditMessage: (content: string) => void;
 };
@@ -44,13 +44,10 @@ export function ChatCanvas({ messages, onCopyMessage, onEditMessage }: ChatCanva
   const bubbleItems = useMemo(
     () =>
       messages.map((message) => ({
-        key: message.key,
-        role: message.role,
+        key: message.id,
+        role: message.role === 'user' ? 'user' : 'assistant',
         content: message.content,
-        loading: message.loading,
-        footer: message.loading ? null : (
-          <MessageActions message={message} onCopy={onCopyMessage} onEdit={onEditMessage} />
-        ),
+        footer: <MessageActions message={message} onCopy={onCopyMessage} onEdit={onEditMessage} />,
         footerPlacement: message.role === 'user' ? ('outer-end' as const) : ('outer-start' as const),
       })),
     [messages, onCopyMessage, onEditMessage],

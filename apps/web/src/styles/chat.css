@@ -155,6 +155,37 @@
   padding: 28px 0 12px;
 }
 
+.chat-panel {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.chat-empty {
+  margin: auto;
+}
+
+.approval-card {
+  width: min(var(--chat-surface-width), 100%);
+  margin: 8px auto 18px;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.approval-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.approval-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
 .bubble-list {
   min-height: 0;
 }

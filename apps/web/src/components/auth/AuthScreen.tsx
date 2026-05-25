@@ -7,10 +7,11 @@ import { ProductLogo } from './ProductLogo';
 import type { AuthMode } from '../../types/chat';
 
 type AuthScreenProps = {
-  onAuthenticated: () => void;
+  loading?: boolean;
+  onAuthenticated: (values: { email: string; password: string }) => Promise<void>;
 };
 
-export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
+export function AuthScreen({ loading, onAuthenticated }: AuthScreenProps) {
   const [form] = Form.useForm();
   const [authMode, setAuthMode] = useState<AuthMode>('login');
 
@@ -67,7 +68,14 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
             </Button>
           </div>
 
-          <Form form={form} className="auth-form" layout="vertical" requiredMark={false} onFinish={onAuthenticated}>
+          <Form
+            form={form}
+            className="auth-form"
+            layout="vertical"
+            requiredMark={false}
+            initialValues={{ email: 'user-a@example.com', password: 'dev-password' }}
+            onFinish={(values) => onAuthenticated(values as { email: string; password: string })}
+          >
             <div
               className={`auth-extra-field ${authMode === 'register' ? 'is-visible' : ''}`}
               aria-hidden={authMode !== 'register'}
@@ -132,7 +140,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               ) : null}
             </div>
 
-            <Button type="primary" htmlType="submit" size="large" block className="auth-submit">
+            <Button type="primary" htmlType="submit" size="large" block className="auth-submit" loading={loading}>
               {authMode === 'login' ? '登录' : '注册并进入'}
             </Button>
           </Form>
