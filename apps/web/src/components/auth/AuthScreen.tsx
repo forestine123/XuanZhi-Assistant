@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { LockOutlined, MailOutlined } from '@ant-design/icons';
-import { Button, Checkbox, Form, Input } from 'antd';
+import type { FormEvent } from 'react';
 
+import { Button, Checkbox, Input } from '../ui';
+import { Icon } from '../ui/icons';
 import { BrandLockup } from '../brand/BrandLockup';
 import { ProductLogo } from './ProductLogo';
 import type { AuthMode } from '../../types/chat';
@@ -11,17 +12,36 @@ type AuthScreenProps = {
   onAuthenticated: (values: { email: string; password: string }) => Promise<void>;
 };
 
+const initialForm = {
+  confirmPassword: '',
+  email: 'user-a@example.com',
+  name: '',
+  password: 'dev-password',
+};
+
 export function AuthScreen({ loading, onAuthenticated }: AuthScreenProps) {
-  const [form] = Form.useForm();
   const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [formValues, setFormValues] = useState(initialForm);
 
   const switchAuthMode = (nextMode: AuthMode) => {
     if (nextMode === authMode) {
       return;
     }
 
-    form.resetFields();
+    setFormValues(initialForm);
     setAuthMode(nextMode);
+  };
+
+  const updateField = (field: keyof typeof formValues, value: string) => {
+    setFormValues((current) => ({ ...current, [field]: value }));
+  };
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void onAuthenticated({
+      email: formValues.email,
+      password: formValues.password,
+    });
   };
 
   return (
@@ -68,67 +88,63 @@ export function AuthScreen({ loading, onAuthenticated }: AuthScreenProps) {
             </Button>
           </div>
 
-          <Form
-            form={form}
-            className="auth-form"
-            layout="vertical"
-            requiredMark={false}
-            initialValues={{ email: 'user-a@example.com', password: 'dev-password' }}
-            onFinish={(values) => onAuthenticated(values as { email: string; password: string })}
-          >
+          <form className="auth-form" onSubmit={submit}>
             <div
               className={`auth-extra-field ${authMode === 'register' ? 'is-visible' : ''}`}
               aria-hidden={authMode !== 'register'}
             >
-              <Form.Item
-                label="姓名"
-                name="name"
-                rules={[{ required: authMode === 'register', message: '请输入姓名' }]}
-              >
+              <label className="auth-field">
+                <span>姓名</span>
                 <Input
-                  size="large"
+                  prefix={<Icon name="user" />}
                   placeholder="请输入姓名"
                   autoComplete="name"
                   disabled={authMode !== 'register'}
+                  value={formValues.name}
+                  onChange={(event) => updateField('name', event.target.value)}
                 />
-              </Form.Item>
+              </label>
             </div>
 
-            <Form.Item label="邮箱" name="email" rules={[{ required: true, message: '请输入邮箱' }]}>
+            <label className="auth-field">
+              <span>邮箱</span>
               <Input
-                size="large"
-                prefix={<MailOutlined />}
+                prefix={<Icon name="mail" />}
                 placeholder="name@company.com"
                 autoComplete="email"
+                required
+                value={formValues.email}
+                onChange={(event) => updateField('email', event.target.value)}
               />
-            </Form.Item>
+            </label>
 
-            <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
+            <label className="auth-field">
+              <span>密码</span>
               <Input.Password
-                size="large"
-                prefix={<LockOutlined />}
+                prefix={<Icon name="lock" />}
                 placeholder="请输入密码"
                 autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                required
+                value={formValues.password}
+                onChange={(event) => updateField('password', event.target.value)}
               />
-            </Form.Item>
+            </label>
 
             <div
               className={`auth-extra-field ${authMode === 'register' ? 'is-visible' : ''}`}
               aria-hidden={authMode !== 'register'}
             >
-              <Form.Item
-                label="确认密码"
-                name="confirmPassword"
-                rules={[{ required: authMode === 'register', message: '请再次输入密码' }]}
-              >
+              <label className="auth-field">
+                <span>确认密码</span>
                 <Input.Password
-                  size="large"
-                  prefix={<LockOutlined />}
+                  prefix={<Icon name="lock" />}
                   placeholder="请再次输入密码"
                   autoComplete="new-password"
                   disabled={authMode !== 'register'}
+                  value={formValues.confirmPassword}
+                  onChange={(event) => updateField('confirmPassword', event.target.value)}
                 />
-              </Form.Item>
+              </label>
             </div>
 
             <div className="auth-options">
@@ -143,7 +159,7 @@ export function AuthScreen({ loading, onAuthenticated }: AuthScreenProps) {
             <Button type="primary" htmlType="submit" size="large" block className="auth-submit" loading={loading}>
               {authMode === 'login' ? '登录' : '注册并进入'}
             </Button>
-          </Form>
+          </form>
         </section>
       </section>
     </main>

@@ -1,75 +1,65 @@
-import type { GetProp } from 'antd';
-import {
-  BookOutlined,
-  BulbOutlined,
-  CheckCircleOutlined,
-  CloudSyncOutlined,
-  DatabaseOutlined,
-  ExperimentOutlined,
-  FileSearchOutlined,
-  MessageOutlined,
-  SearchOutlined,
-  ToolOutlined,
-} from '@ant-design/icons';
+import type { ComponentProps } from 'react';
 import { Prompts } from '@ant-design/x';
 
-type PromptItem = GetProp<typeof Prompts, 'items'>[number];
+import { Icon } from '../components/ui/icons';
+
+type PromptItem = NonNullable<ComponentProps<typeof Prompts>['items']>[number];
 
 export const conversationItems = [
   {
     key: 'today-1',
     label: '助手系统 Web 界面',
     group: '今天',
-    icon: <MessageOutlined />,
+    icon: <Icon name="message" />,
   },
   {
     key: 'today-2',
     label: '知识库问答流程',
     group: '今天',
-    icon: <BookOutlined />,
+    icon: <Icon name="book" />,
   },
   {
     key: 'today-3',
     label: 'Agent 工具调用设计',
     group: '今天',
-    icon: <ToolOutlined />,
+    icon: <Icon name="tool" />,
   },
   {
     key: 'yesterday-1',
     label: '检索增强方案',
     group: '昨天',
-    icon: <FileSearchOutlined />,
+    icon: <Icon name="file-search" />,
   },
   {
     key: 'yesterday-2',
     label: '多模型路由策略',
     group: '昨天',
-    icon: <CloudSyncOutlined />,
+    icon: <Icon name="cloud" />,
   },
 ];
 
 export const promptItems: PromptItem[] = [
   {
     key: 'prd',
-    icon: <BulbOutlined />,
+    icon: <Icon name="bulb" />,
     label: '预约复盘会议',
     description: '下周三上午约张三',
   },
   {
     key: 'kb',
-    icon: <DatabaseOutlined />,
+    icon: <Icon name="database" />,
     label: '知识库问答',
     description: '基于资料回答并标注依据',
   },
   {
     key: 'agent',
-    icon: <ExperimentOutlined />,
+    icon: <Icon name="experiment" />,
     label: 'Agent 编排',
     description: '拆解步骤并安排工具',
   },
   {
     key: 'review',
-    icon: <CheckCircleOutlined />,
+    icon: <Icon name="check-circle" />,
     label: '体验检查',
     description: '检查交互、布局和可用性',
   },
@@ -83,8 +73,8 @@ export const promptDrafts: Record<string, string> = {
 };
 
 export const toolTags = [
-  { label: '深度思考', icon: <ExperimentOutlined /> },
-  { label: '联网搜索', icon: <SearchOutlined /> },
-  { label: '知识库', icon: <BookOutlined /> },
-  { label: '工具调用', icon: <ToolOutlined /> },
+  { label: '深度思考', icon: <Icon name="experiment" /> },
+  { label: '联网搜索', icon: <Icon name="search" /> },
+  { label: '知识库', icon: <Icon name="book" /> },
+  { label: '工具调用', icon: <Icon name="tool" /> },
 ];

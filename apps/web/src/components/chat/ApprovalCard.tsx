@@ -1,9 +1,7 @@
-import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Space, Typography } from 'antd';
+import { Alert, Button, Card, Space, Text } from '../ui';
+import { Icon } from '../ui/icons';
 
 import type { Approval } from '../../types/protocol';
-
-const { Text } = Typography;
 
 type ApprovalCardProps = {
   approval: Approval;
@@ -29,10 +27,10 @@ export function ApprovalCard({ approval, loading, onApprove, onReject }: Approva
       </div>
       {isPending ? (
         <Space className="approval-card-actions">
-          <Button icon={<CloseOutlined />} onClick={() => onReject(approval.id)} disabled={loading}>
+          <Button icon={<Icon name="x" />} onClick={() => onReject(approval.id)} disabled={loading}>
             拒绝
           </Button>
-          <Button type="primary" icon={<CheckOutlined />} loading={loading} onClick={() => onApprove(approval.id)}>
+          <Button type="primary" icon={<Icon name="check" />} loading={loading} onClick={() => onApprove(approval.id)}>
             确认
           </Button>
         </Space>

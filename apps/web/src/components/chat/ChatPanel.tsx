@@ -1,4 +1,4 @@
-import { Empty } from 'antd';
+import { Empty } from '../ui';
 
 import type { Message } from '../../types/protocol';
 import { ChatCanvas } from './ChatCanvas';

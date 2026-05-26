@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Empty, List } from 'antd';
-import { FileTextOutlined } from '@ant-design/icons';
 
+import { Empty } from '../ui';
+import { Icon } from '../ui/icons';
 import type { Artifact } from '../../types/protocol';
 import { ArtifactViewer } from './ArtifactViewer';
 
@@ -22,22 +22,25 @@ export function ArtifactPanel({ artifacts }: ArtifactPanelProps) {
 
   return (
     <div className="artifact-panel">
-      <List
-        className="artifact-list"
-        size="small"
-        dataSource={artifacts}
-        renderItem={(artifact) => (
-          <List.Item
-            className={artifact.id === activeArtifact?.id ? 'is-active' : ''}
+      <div className="artifact-list">
+        {artifacts.map((artifact) => (
+          <button
+            className={`ant-list-item ${artifact.id === activeArtifact?.id ? 'is-active' : ''}`}
+            key={artifact.id}
+            type="button"
             onClick={() => setActiveId(artifact.id)}
           >
-            <List.Item.Meta
-              avatar={<FileTextOutlined />}
-              title={artifact.title}
-            />
-          </List.Item>
-        )}
-      />
+            <span className="ant-list-item-meta">
+              <span className="ant-list-item-meta-avatar">
+                <Icon name="file-text" />
+              </span>
+              <span className="ant-list-item-meta-content">
+                <span className="ant-list-item-meta-title">{artifact.title}</span>
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
       <ArtifactViewer artifact={activeArtifact} />
     </div>
   );

@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { PaperClipOutlined } from '@ant-design/icons';
-import { Button, Space, Tag, Tooltip } from 'antd';
 import { Sender } from '@ant-design/x';
 
+import { Button, Space, Tag, Tooltip } from '../ui';
+import { Icon } from '../ui/icons';
 import { toolTags } from '../../data/assistantData';
 import type { ComposerVariant } from '../../types/chat';
 
@@ -28,7 +28,7 @@ export function ChatComposer({ value, variant, onChange, onSubmit }: ChatCompose
           <Button
             aria-label="添加附件"
             type="text"
-            icon={<PaperClipOutlined />}
+            icon={<Icon name="paperclip" />}
             className="sender-action-button"
           />
         </Tooltip>

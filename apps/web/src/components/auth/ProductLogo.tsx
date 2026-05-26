@@ -1,4 +1,4 @@
-import { ThunderboltOutlined } from '@ant-design/icons';
+import { Icon } from '../ui/icons';
 
 export function ProductLogo() {
   return (
@@ -7,7 +7,7 @@ export function ProductLogo() {
       <span className="product-logo-ring product-logo-ring-middle" />
       <span className="product-logo-scan" />
       <span className="product-logo-core">
-        <ThunderboltOutlined />
+        <Icon name="thunderbolt" />
       </span>
       <span className="product-logo-bar product-logo-bar-a" />
       <span className="product-logo-bar product-logo-bar-b" />

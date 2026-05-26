@@ -14,7 +14,7 @@
   -> 任务完成
 ```
 
-第一阶段优先跑通前端、后端、SSE、中间产物、审批和多用户隔离。OpenClaw 接入通过插件目录预留，暂不依赖真实 Agent Runtime 完成演示。
+第一阶段优先跑通前端、后端、SSE、中间产物、审批和多用户隔离。OpenClaw 接入通过插件目录预留，当前演示仍使用 Mock Agent，不依赖真实 Agent Runtime。
 
 ## 技术栈
 
@@ -30,14 +30,13 @@
 ```text
 .
 |-- apps/
-|   |-- api/                 # Fastify 后端 API，负责认证、权限、存储、SSE、Mock Agent
+|   |-- api/                 # Fastify 后端 API
 |   `-- web/                 # React + Vite 前端工作台
 |-- packages/
 |   `-- shared/              # 前后端共享协议类型
 |-- plugins/
 |   `-- xuanzhi-artifacts/   # OpenClaw 上报插件
 |-- openclaw/                # OpenClaw 源码目录
-|-- AGENTS.md                # 开发约束和验收标准
 |-- package.json
 `-- pnpm-workspace.yaml
 ```
@@ -49,6 +48,57 @@ packages/shared/src/protocol.ts
 ```
 
 业务对象包含 `User`、`AuthSession`、`Task`、`Message`、`AgentEvent`、`Artifact`、`Approval`。其中 `Task` 必须绑定 `userId`，消息、事件、产物和审批也冗余保存 `userId`，用于查询和权限判断。
+
+## 后端架构
+
+后端已拆分为分层目录，`apps/api/src/app.ts` 只负责创建 Fastify 实例、装配依赖、注册 CORS 和路由。
+
+```text
+apps/api/src/
+|-- app/
+|   |-- dependencies.ts      # 组装 config、store、stream 和 services
+|   `-- registerRoutes.ts    # 注册所有 HTTP 路由模块
+|-- agents/
+|   `-- mockAgent.ts         # MVP 阶段的 Mock Agent 执行器
+|-- config/
+|   `-- env.ts               # 环境变量配置
+|-- http/
+|   |-- auth.ts              # 用户 token / 服务 token 解析
+|   |-- cors.ts              # CORS 和 OPTIONS 处理
+|   `-- taskGuards.ts        # 登录态、任务归属、写入权限校验
+|-- realtime/
+|   `-- streamHub.ts         # 按 taskId 分发 SSE 事件
+|-- repositories/
+|   `-- memoryStore.ts       # MVP 内存仓储
+|-- routes/
+|   |-- authRoutes.ts
+|   |-- taskRoutes.ts
+|   |-- messageRoutes.ts
+|   |-- eventRoutes.ts
+|   |-- artifactRoutes.ts
+|   |-- approvalRoutes.ts
+|   `-- streamRoutes.ts
+|-- schemas/
+|   `-- protocolValidators.ts # 协议枚举和请求值校验
+|-- services/
+|   |-- authService.ts
+|   |-- taskService.ts
+|   |-- messageService.ts
+|   |-- eventService.ts
+|   |-- artifactService.ts
+|   `-- approvalService.ts
+|-- app.ts
+`-- main.ts
+```
+
+分层约定：
+
+- `routes` 只处理 HTTP 入参、状态码和响应。
+- `services` 承载业务流程、状态流转、事件写入和 SSE 广播。
+- `repositories` 封装数据存储；当前是内存实现，后续可替换为数据库实现。
+- `http` 放认证、权限守卫和 CORS 等横切逻辑。
+- `schemas` 放请求值和协议枚举校验。
+- `agents` 放 Agent 执行器；当前只有 Mock Agent。
 
 ## 本地开发
 
@@ -149,8 +199,8 @@ VITE_API_BASE_URL=http://127.0.0.1:3000
 多用户隔离是当前 MVP 的最高优先级：
 
 - 前端不向业务接口传 `userId`
-- 后端只信任认证中间件解析出的 `currentUser`
-- 创建 task 时，后端使用 `currentUser.id` 写入 `task.userId`
+- 后端只信任认证层解析出的当前用户
+- 创建 task 时，后端使用当前用户 ID 写入 `task.userId`
 - 查询 task 时，只返回当前用户自己的任务
 - 发送 message 前，必须校验 task 属于当前用户
 - 查询 event、artifact、approval 前，必须校验 task 属于当前用户
@@ -240,19 +290,26 @@ pnpm install
 pnpm dev:api
 pnpm dev:web
 pnpm test
+pnpm --filter @xuanzhi/api test
+pnpm --filter @xuanzhi/api build
 ```
 
-当前阶段不要求生产构建、Docker 构建、部署或发布。除非明确需要，不要执行：
+Windows PowerShell 如果拦截 `pnpm.ps1`，可以改用 `pnpm.cmd`：
+
+```powershell
+pnpm.cmd --filter @xuanzhi/api test
+pnpm.cmd --filter @xuanzhi/api build
+```
+
+当前阶段不要求 Docker 构建、部署或发布。除非明确需要，不要执行：
 
 ```bash
-pnpm build
-pnpm run build
 pnpm claw:build
 ```
 
 ## 当前 MVP 不做
 
-- 生产构建和部署发布
+- 生产部署发布
 - Docker 镜像构建
 - 复杂 RBAC、团队、组织、空间
 - 任务共享和多人协同审批
@@ -262,12 +319,14 @@ pnpm claw:build
 - 任务回放和审计
 - OpenClaw core 深度改造
 
-## 参考文档
+## 关键入口
 
-- `AGENTS.md`：开发约束、目录规范和验收标准
-- `docs/00_IMPLEMENTATION_OVERVIEW.md`：MVP 总体说明
-- `docs/01_FRONTEND_IMPLEMENTATION.md`：前端实现说明
-- `docs/02_BACKEND_IMPLEMENTATION.md`：后端实现说明
-- `docs/03_OPENCLAW_INTEGRATION.md`：OpenClaw 接入说明
-- `docs/04_PLUGIN_DEVELOPMENT.md`：插件开发说明
-- `docs/05_MVP_DELIVERY_CHECKLIST.md`：交付清单
+- 后端装配：`apps/api/src/app.ts`
+- 后端依赖组装：`apps/api/src/app/dependencies.ts`
+- 后端路由注册：`apps/api/src/app/registerRoutes.ts`
+- 后端分层测试：`apps/api/test/layers.test.ts`
+- 后端 API 回归测试：`apps/api/test/app.test.ts`
+- 前端入口：`apps/web/src/main.tsx`
+- 前端应用：`apps/web/src/App.tsx`
+- 共享协议：`packages/shared/src/protocol.ts`
+- OpenClaw 插件入口：`plugins/xuanzhi-artifacts/src/index.ts`

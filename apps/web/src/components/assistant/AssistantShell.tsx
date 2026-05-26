@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { message } from 'antd';
 
 import { promptDrafts } from '../../data/assistantData';
 import * as approvalApi from '../../services/approvalApi';
@@ -16,6 +15,7 @@ import { AgentWorkspace } from '../agent/AgentWorkspace';
 import { ChatComposer } from '../chat/ChatComposer';
 import { ChatHome } from '../chat/ChatHome';
 import { ChatPanel } from '../chat/ChatPanel';
+import { toast } from '../ui';
 import { Sidebar } from './Sidebar';
 import { WorkspaceHeader } from './WorkspaceHeader';
 
@@ -107,10 +107,10 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
           taskId,
           token,
           applyStreamEvent,
-          () => message.warning('任务实时连接已断开，请重新选择任务'),
+          () => toast.warning('任务实时连接已断开，请重新选择任务'),
         );
       } catch (error) {
-        message.error(error instanceof Error ? error.message : '加载任务失败');
+        toast.error(error instanceof Error ? error.message : '加载任务失败');
       }
     },
     [applyStreamEvent, closeStream, loadTaskSnapshot, token],
@@ -134,7 +134,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
         }
       })
       .catch((error) => {
-        message.error(error instanceof Error ? error.message : '加载任务列表失败');
+        toast.error(error instanceof Error ? error.message : '加载任务列表失败');
       });
 
     return () => {
@@ -180,7 +180,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
         // 避免 SSE 连接尚未完全建立时漏掉首轮进度和审批。
         await loadTaskSnapshot(task.id);
       } catch (error) {
-        message.error(error instanceof Error ? error.message : '发送失败');
+        toast.error(error instanceof Error ? error.message : '发送失败');
         setInputValue(question);
       }
     },
@@ -213,13 +213,21 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
     setWorkspaceCollapsed((collapsed) => !collapsed);
   }, []);
 
+  const openPendingApprovalTask = useCallback(
+    (taskId: string) => {
+      setWorkspaceCollapsed(false);
+      void openTask(taskId);
+    },
+    [openTask],
+  );
+
   const approve = useCallback(async (approvalId: string) => {
     setApprovingId(approvalId);
     try {
       const approval = await approvalApi.approveApproval(approvalId);
       setApprovalsByTask((current) => upsertTaskRecordItem(current, approval.taskId, approval));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '确认失败');
+      toast.error(error instanceof Error ? error.message : '确认失败');
     } finally {
       setApprovingId(undefined);
     }
@@ -231,7 +239,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
       const approval = await approvalApi.rejectApproval(approvalId);
       setApprovalsByTask((current) => upsertTaskRecordItem(current, approval.taskId, approval));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '拒绝失败');
+      toast.error(error instanceof Error ? error.message : '拒绝失败');
     } finally {
       setApprovingId(undefined);
     }
@@ -301,7 +309,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
           pendingApprovalSummaries={pendingApprovalSummaries}
           task={activeTask}
           onCreateConversation={createConversation}
-          onOpenTask={(taskId) => void openTask(taskId)}
+          onOpenTask={openPendingApprovalTask}
           onToggleSidebar={toggleSidebar}
           onToggleWorkspace={toggleWorkspace}
         />

@@ -1,5 +1,5 @@
-import { CopyOutlined, EditOutlined } from '@ant-design/icons';
-import { Button, Tooltip } from 'antd';
+import { Button, Tooltip } from '../ui';
+import { Icon } from '../ui/icons';
 
 import { formatMessageTime } from '../../utils/time';
 
@@ -22,7 +22,7 @@ export function MessageActions({ message, onCopy, onEdit }: MessageActionsProps)
           type="text"
           size="small"
           aria-label="复制消息"
-          icon={<CopyOutlined />}
+          icon={<Icon name="copy" />}
           className="message-action-button"
           onClick={() => onCopy(message.content)}
         />
@@ -33,7 +33,7 @@ export function MessageActions({ message, onCopy, onEdit }: MessageActionsProps)
             type="text"
             size="small"
             aria-label="编辑消息"
-            icon={<EditOutlined />}
+            icon={<Icon name="edit" />}
             className="message-action-button"
             onClick={() => onEdit(message.content)}
           />

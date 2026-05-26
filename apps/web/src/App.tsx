@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Spin, message } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
 import zhCNX from '@ant-design/x/locale/zh_CN';
 import { XProvider } from '@ant-design/x';
 
 import { AssistantShell } from './components/assistant/AssistantShell';
 import { AuthScreen } from './components/auth/AuthScreen';
+import { Spinner, Toaster, toast } from './components/ui';
 import * as authApi from './services/authApi';
 import { clearAuthToken, getAuthToken, persistLogin } from './stores/authStore';
 import type { User } from './types/protocol';
@@ -55,7 +54,7 @@ function App() {
       setToken(response.token);
       setCurrentUser(response.user);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '登录失败');
+      toast.error(error instanceof Error ? error.message : '登录失败');
     } finally {
       setAuthLoading(false);
     }
@@ -74,7 +73,7 @@ function App() {
 
   return (
     <XProvider
-      locale={{ ...zhCN, ...zhCNX }}
+      locale={zhCNX}
       theme={{
         token: {
           colorPrimary: '#2563eb',
@@ -86,13 +85,14 @@ function App() {
     >
       {checkingSession ? (
         <main className="app-loading">
-          <Spin size="large" />
+          <Spinner size="large" />
         </main>
       ) : currentUser && token ? (
         <AssistantShell currentUser={currentUser} token={token} onLogout={logout} />
       ) : (
         <AuthScreen loading={authLoading} onAuthenticated={login} />
       )}
+      <Toaster />
     </XProvider>
   );
 }

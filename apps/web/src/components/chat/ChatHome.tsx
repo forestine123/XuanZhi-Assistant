@@ -1,7 +1,7 @@
-import { RobotOutlined } from '@ant-design/icons';
 import { Prompts } from '@ant-design/x';
 
 import { promptItems } from '../../data/assistantData';
+import { Icon } from '../ui/icons';
 import { ChatComposer } from './ChatComposer';
 
 type ChatHomeProps = {
@@ -15,7 +15,7 @@ export function ChatHome({ inputValue, onInputChange, onPromptSelect, onSubmitMe
   return (
     <div className="home-canvas">
       <span className="welcome-avatar">
-        <RobotOutlined />
+        <Icon name="robot" />
       </span>
       <h1>我是玄知助手，很高兴见到你</h1>
       <p>你可以直接提问，或开启知识库、联网搜索和工具调用来完成更复杂的任务。</p>

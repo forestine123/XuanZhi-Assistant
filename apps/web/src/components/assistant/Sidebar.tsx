@@ -1,24 +1,11 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Avatar, Button, Empty, Modal, Popover, Tag, Typography } from 'antd';
 import { Conversations } from '@ant-design/x';
-import {
-  ArrowLeftOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  CloseCircleOutlined,
-  LoadingOutlined,
-  LogoutOutlined,
-  MoreOutlined,
-  PlusOutlined,
-  SettingOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
 
+import { Avatar, Button, Empty, Modal, Popover, Tag, Text } from '../ui';
+import { Icon } from '../ui/icons';
 import { BrandLockup } from '../brand/BrandLockup';
 import type { Approval, Task, User } from '../../types/protocol';
-
-const { Text } = Typography;
 
 type SidebarProps = {
   activeKey?: string;
@@ -35,12 +22,12 @@ type SidebarProps = {
 };
 
 const taskStatusMeta = {
-  created: { label: '已创建', icon: <ClockCircleOutlined />, color: 'default' },
-  planning: { label: '规划中', icon: <LoadingOutlined />, color: 'processing' },
-  running: { label: '执行中', icon: <LoadingOutlined />, color: 'processing' },
-  waiting_approval: { label: '等待确认', icon: <ClockCircleOutlined />, color: 'warning' },
-  completed: { label: '已完成', icon: <CheckCircleOutlined />, color: 'success' },
-  failed: { label: '失败', icon: <CloseCircleOutlined />, color: 'error' },
+  created: { label: '已创建', icon: <Icon name="clock" />, color: 'default' },
+  planning: { label: '规划中', icon: <Icon name="loader" />, color: 'processing' },
+  running: { label: '执行中', icon: <Icon name="loader" />, color: 'processing' },
+  waiting_approval: { label: '等待确认', icon: <Icon name="clock" />, color: 'warning' },
+  completed: { label: '已完成', icon: <Icon name="check-circle" />, color: 'success' },
+  failed: { label: '失败', icon: <Icon name="x-circle" />, color: 'error' },
 } satisfies Record<Task['status'], { label: string; icon: ReactNode; color: string }>;
 
 const approvalStatusMeta = {
@@ -90,7 +77,7 @@ export function Sidebar({
           <Button
             type="text"
             size="small"
-            icon={<ArrowLeftOutlined />}
+            icon={<Icon name="arrow-left" />}
             aria-label="返回账户菜单"
             onClick={() => setAccountPanel('menu')}
           />
@@ -119,24 +106,18 @@ export function Sidebar({
         )}
       </div>
     ) : (
-    <div className="sidebar-user-menu">
-      <Button type="text" icon={<CheckCircleOutlined />} className="sidebar-user-menu-item" onClick={openApprovals}>
-        审批记录
-      </Button>
-      <Button type="text" icon={<SettingOutlined />} className="sidebar-user-menu-item" onClick={openSettings}>
-        设置
-      </Button>
-      <Button
-        type="text"
-        danger
-        icon={<LogoutOutlined />}
-        className="sidebar-user-menu-item"
-        onClick={logout}
-      >
-        退出登录
-      </Button>
-    </div>
-  );
+      <div className="sidebar-user-menu">
+        <Button type="text" icon={<Icon name="check-circle" />} className="sidebar-user-menu-item" onClick={openApprovals}>
+          审批记录
+        </Button>
+        <Button type="text" icon={<Icon name="settings" />} className="sidebar-user-menu-item" onClick={openSettings}>
+          设置
+        </Button>
+        <Button type="text" danger icon={<Icon name="log-out" />} className="sidebar-user-menu-item" onClick={logout}>
+          退出登录
+        </Button>
+      </div>
+    );
 
   const conversationItems = tasks.map((task) => ({
     key: task.id,
@@ -150,7 +131,7 @@ export function Sidebar({
       <div className="assistant-sidebar-panel">
         <BrandLockup />
 
-        <Button icon={<PlusOutlined />} className="new-chat-button" onClick={onCreateConversation}>
+        <Button icon={<Icon name="plus" />} className="new-chat-button" onClick={onCreateConversation}>
           新对话
         </Button>
 
@@ -160,13 +141,13 @@ export function Sidebar({
           items={conversationItems}
           groupable={{
             collapsible: true,
-            defaultExpandedKeys: ['今天', '昨天'],
+            defaultExpandedKeys: ['已创建', '执行中', '等待确认', '已完成'],
           }}
           onActiveChange={onActiveChange}
         />
 
         <div className="sidebar-footer">
-          <Avatar size={28} icon={<UserOutlined />} />
+          <Avatar size={28} icon={<Icon name="user" />} />
           <div className="sidebar-footer-copy">
             <Text strong>{currentUser.name}</Text>
             <Tag color="blue">{currentUser.email}</Tag>
@@ -184,19 +165,12 @@ export function Sidebar({
             content={accountMenu}
             overlayClassName={accountPanel === 'approvals' ? 'sidebar-account-popover is-approvals' : 'sidebar-account-popover'}
           >
-            <Button type="text" size="small" icon={<MoreOutlined />} aria-label="账户菜单" />
+            <Button type="text" size="small" icon={<Icon name="more" />} aria-label="账户菜单" />
           </Popover>
         </div>
       </div>
 
-      <Modal
-        title="设置"
-        open={settingsOpen}
-        footer={null}
-        width={360}
-        centered
-        onCancel={() => setSettingsOpen(false)}
-      >
+      <Modal title="设置" open={settingsOpen} footer={null} width={360} centered onCancel={() => setSettingsOpen(false)}>
         <div className="sidebar-settings-panel">
           <div>
             <Text type="secondary">当前账号</Text>

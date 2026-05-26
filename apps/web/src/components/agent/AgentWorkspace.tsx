@@ -1,13 +1,11 @@
-import { Badge, Button, Divider, Empty, List, Space, Tabs, Tag, Typography } from 'antd';
-import { CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { ReactNode } from 'react';
 
-import type { AgentEvent, Approval, Artifact } from '../../types/protocol';
 import { ApprovalCard } from '../chat/ApprovalCard';
 import { ArtifactPanel } from '../artifacts/ArtifactPanel';
 import { AgentTimeline } from './AgentTimeline';
-
-const { Text } = Typography;
+import { Badge, Button, Divider, Empty, Space, Tabs, Tag, Text } from '../ui';
+import { Icon } from '../ui/icons';
+import type { AgentEvent, Approval, Artifact } from '../../types/protocol';
 
 type AgentWorkspaceProps = {
   approvals: Approval[];
@@ -19,9 +17,9 @@ type AgentWorkspaceProps = {
 };
 
 const approvalStatusMeta = {
-  pending: { label: '待确认', color: 'warning', icon: <ClockCircleOutlined /> },
-  approved: { label: '已确认', color: 'success', icon: <CheckCircleOutlined /> },
-  rejected: { label: '已拒绝', color: 'error', icon: <CloseCircleOutlined /> },
+  pending: { label: '待确认', color: 'warning', icon: <Icon name="clock" /> },
+  approved: { label: '已确认', color: 'success', icon: <Icon name="check-circle" /> },
+  rejected: { label: '已拒绝', color: 'error', icon: <Icon name="x-circle" /> },
 } satisfies Record<Approval['status'], { label: string; color: string; icon: ReactNode }>;
 
 function ApprovalCenter({
@@ -41,14 +39,12 @@ function ApprovalCenter({
 
   return (
     <div className="approval-center">
-      <List
-        className="approval-record-list"
-        dataSource={approvals}
-        renderItem={(approval) => {
+      <div className="approval-record-list">
+        {approvals.map((approval) => {
           const meta = approvalStatusMeta[approval.status];
 
           return (
-            <List.Item className="approval-record-item">
+            <div className="approval-record-item" key={approval.id}>
               <div className="approval-record-main">
                 <div className="approval-record-title">
                   <Text strong>{approval.title}</Text>
@@ -74,10 +70,10 @@ function ApprovalCenter({
                   </Space>
                 ) : null}
               </div>
-            </List.Item>
+            </div>
           );
-        }}
-      />
+        })}
+      </div>
     </div>
   );
 }
@@ -142,7 +138,7 @@ export function AgentWorkspace({
           {pendingApprovalCount > 0 ? (
             <Badge count={pendingApprovalCount} size="small">
               <span className="approval-badge-anchor">
-                <FileTextOutlined />
+                <Icon name="file-text" />
               </span>
             </Badge>
           ) : null}

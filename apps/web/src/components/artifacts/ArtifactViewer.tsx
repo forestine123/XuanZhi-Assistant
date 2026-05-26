@@ -1,8 +1,6 @@
-import { Descriptions, Empty, Typography } from 'antd';
+import { Empty, Paragraph, Text } from '../ui';
 
 import type { Artifact } from '../../types/protocol';
-
-const { Paragraph, Text } = Typography;
 
 type ArtifactViewerProps = {
   artifact?: Artifact;
@@ -14,16 +12,14 @@ function renderJson(content: unknown) {
   }
 
   return (
-    <Descriptions
-      column={1}
-      size="small"
-      bordered
-      items={Object.entries(content).map(([key, value]) => ({
-        key,
-        label: key,
-        children: Array.isArray(value) ? value.join('、') : typeof value === 'object' ? JSON.stringify(value) : String(value),
-      }))}
-    />
+    <dl className="artifact-description-list">
+      {Object.entries(content).map(([key, value]) => (
+        <div className="artifact-description-row" key={key}>
+          <dt>{key}</dt>
+          <dd>{Array.isArray(value) ? value.join('、') : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -36,7 +32,9 @@ export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
     <div className="artifact-viewer">
       <div className="artifact-viewer-header">
         <Text strong>{artifact.title}</Text>
-        <Text type="secondary">{artifact.type}</Text>
+        <Text className="artifact-type-badge" type="secondary">
+          {artifact.type}
+        </Text>
       </div>
       {artifact.format === 'json' ? (
         renderJson(artifact.content)

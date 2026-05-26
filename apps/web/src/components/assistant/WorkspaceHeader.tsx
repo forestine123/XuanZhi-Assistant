@@ -1,9 +1,9 @@
-import { Badge, Button, Empty, Popover, Space, Tag, Tooltip, Typography } from 'antd';
-import { MenuFoldOutlined, MenuUnfoldOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+
+import { Badge, Button, Empty, Popover, Space, Tag, Text, Tooltip } from '../ui';
+import { Icon } from '../ui/icons';
 
 import type { Approval, Task } from '../../types/protocol';
-
-const { Text } = Typography;
 
 const taskStatusLabel = {
   created: '已创建',
@@ -40,6 +40,12 @@ export function WorkspaceHeader({
   onToggleSidebar,
   onToggleWorkspace,
 }: WorkspaceHeaderProps) {
+  const [pendingApprovalOpen, setPendingApprovalOpen] = useState(false);
+  const openPendingApprovalTask = (taskId: string) => {
+    setPendingApprovalOpen(false);
+    onOpenTask(taskId);
+  };
+
   const pendingApprovalContent =
     pendingApprovalSummaries.length > 0 ? (
       <div className="pending-approval-popover">
@@ -53,7 +59,7 @@ export function WorkspaceHeader({
               key={pendingTask.id}
               type="text"
               className="pending-approval-item"
-              onClick={() => onOpenTask(pendingTask.id)}
+              onClick={() => openPendingApprovalTask(pendingTask.id)}
             >
               <span className="pending-approval-item-main">
                 <Text strong>{pendingTask.title}</Text>
@@ -74,7 +80,7 @@ export function WorkspaceHeader({
         <Tooltip title={sidebarCollapsed ? '显示侧边栏' : '隐藏侧边栏'}>
           <Button
             type="text"
-            icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            icon={sidebarCollapsed ? <Icon name="chevron-right-panel" /> : <Icon name="chevron-left-panel" />}
             className="sidebar-toggle"
             aria-label={sidebarCollapsed ? '显示侧边栏' : '隐藏侧边栏'}
             aria-expanded={!sidebarCollapsed}
@@ -86,7 +92,7 @@ export function WorkspaceHeader({
             <Button
               type="text"
               shape="circle"
-              icon={<PlusOutlined />}
+              icon={<Icon name="plus" />}
               className="collapsed-new-chat-button"
               aria-label="新对话"
               tabIndex={sidebarCollapsed ? 0 : -1}
@@ -106,6 +112,8 @@ export function WorkspaceHeader({
           <Popover
             content={pendingApprovalContent}
             overlayClassName="pending-approval-overlay"
+            open={pendingApprovalOpen}
+            onOpenChange={setPendingApprovalOpen}
             placement="bottomRight"
             trigger={['hover', 'click']}
           >
@@ -116,15 +124,12 @@ export function WorkspaceHeader({
             </Badge>
           </Popover>
         ) : null}
-        <Tooltip title="搜索">
-          <Button type="text" shape="circle" icon={<SearchOutlined />} />
-        </Tooltip>
         {task ? (
           <Tooltip title={workspaceCollapsed ? '显示工作台' : '隐藏工作台'}>
             <Button
               type="text"
               shape="circle"
-              icon={workspaceCollapsed ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
+              icon={workspaceCollapsed ? <Icon name="chevron-left-panel" /> : <Icon name="chevron-right-panel" />}
               className="workspace-toggle"
               aria-label={workspaceCollapsed ? '显示工作台' : '隐藏工作台'}
               aria-expanded={!workspaceCollapsed}
@@ -132,9 +137,6 @@ export function WorkspaceHeader({
             />
           </Tooltip>
         ) : null}
-        <Tooltip title="更多">
-          <Button type="text" shape="circle" icon={<MoreOutlined />} />
-        </Tooltip>
       </Space>
     </header>
   );
