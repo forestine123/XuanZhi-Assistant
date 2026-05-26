@@ -1,5 +1,6 @@
 export type {
   AgentEvent,
+  AgentEventStatus,
   Approval,
   Artifact,
   AuthSession,

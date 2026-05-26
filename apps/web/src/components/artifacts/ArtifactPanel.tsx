@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Empty, List, Typography } from 'antd';
+import { Empty, List } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 
 import type { Artifact } from '../../types/protocol';
 import { ArtifactViewer } from './ArtifactViewer';
-
-const { Text } = Typography;
 
 type ArtifactPanelProps = {
   artifacts: Artifact[];
@@ -36,7 +34,6 @@ export function ArtifactPanel({ artifacts }: ArtifactPanelProps) {
             <List.Item.Meta
               avatar={<FileTextOutlined />}
               title={artifact.title}
-              description={<Text type="secondary">{artifact.format}</Text>}
             />
           </List.Item>
         )}

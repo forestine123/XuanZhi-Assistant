@@ -37,7 +37,6 @@
 |-- plugins/
 |   `-- xuanzhi-artifacts/   # OpenClaw 上报插件
 |-- openclaw/                # OpenClaw 源码目录
-|-- docs/                    # MVP 实现说明
 |-- AGENTS.md                # 开发约束和验收标准
 |-- package.json
 `-- pnpm-workspace.yaml

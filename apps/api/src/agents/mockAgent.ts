@@ -1,7 +1,7 @@
 import type { Task } from '@xuanzhi/shared/protocol';
 
-import type { MemoryStore } from './store.js';
-import type { StreamHub } from './stream.js';
+import type { MemoryStore } from '../repositories/memoryStore.js';
+import type { StreamHub } from '../realtime/streamHub.js';
 
 // NOTE(mock-agent): 这是接入 OpenClaw 前的可演示执行器，用同一套 event/artifact/approval
 // 写入路径验证权限、SSE 和审批闭环。所有生成数据都必须继承 task.userId。

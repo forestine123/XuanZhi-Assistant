@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { message } from 'antd';
 
 import { promptDrafts } from '../../data/assistantData';
@@ -65,25 +65,43 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
     }
   }, []);
 
+  const loadTaskSnapshot = useCallback(async (taskId: string) => {
+    const [task, messages, events, artifacts, approvals] = await Promise.all([
+      taskApi.getTask(taskId),
+      messageApi.getTaskMessages(taskId),
+      taskApi.getTaskEvents(taskId),
+      taskApi.getTaskArtifacts(taskId),
+      taskApi.getTaskApprovals(taskId),
+    ]);
+
+    setTasks((current) => upsertById(current, task));
+    setMessagesByTask((current) => replaceTaskRecord(current, taskId, messages));
+    setEventsByTask((current) => replaceTaskRecord(current, taskId, events));
+    setArtifactsByTask((current) => replaceTaskRecord(current, taskId, artifacts));
+    setApprovalsByTask((current) => replaceTaskRecord(current, taskId, approvals));
+
+    return task;
+  }, []);
+
+  const loadApprovalSummaries = useCallback(async (nextTasks: Task[]) => {
+    if (nextTasks.length === 0) {
+      return {};
+    }
+
+    const entries = await Promise.all(
+      nextTasks.map(async (task) => [task.id, await taskApi.getTaskApprovals(task.id)] as const),
+    );
+
+    return Object.fromEntries(entries) as Record<string, Approval[]>;
+  }, []);
+
   const openTask = useCallback(
     async (taskId: string) => {
       closeStream();
       setActiveTaskId(taskId);
       try {
         // 先加载任务快照再建立当前任务 SSE；创建新任务时会先进入这里，再发送首条消息触发 Mock Agent。
-        const [task, messages, events, artifacts, approvals] = await Promise.all([
-          taskApi.getTask(taskId),
-          messageApi.getTaskMessages(taskId),
-          taskApi.getTaskEvents(taskId),
-          taskApi.getTaskArtifacts(taskId),
-          taskApi.getTaskApprovals(taskId),
-        ]);
-
-        setTasks((current) => upsertById(current, task));
-        setMessagesByTask((current) => replaceTaskRecord(current, taskId, messages));
-        setEventsByTask((current) => replaceTaskRecord(current, taskId, events));
-        setArtifactsByTask((current) => replaceTaskRecord(current, taskId, artifacts));
-        setApprovalsByTask((current) => replaceTaskRecord(current, taskId, approvals));
+        await loadTaskSnapshot(taskId);
         // 只保存当前任务连接的关闭函数，切换任务时 closeStream 会停止旧连接继续写入状态。
         streamCleanupRef.current = subscribeTaskStream(
           taskId,
@@ -95,7 +113,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
         message.error(error instanceof Error ? error.message : '加载任务失败');
       }
     },
-    [applyStreamEvent, closeStream, token],
+    [applyStreamEvent, closeStream, loadTaskSnapshot, token],
   );
 
   useEffect(() => {
@@ -103,9 +121,16 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
 
     taskApi
       .listTasks()
-      .then((nextTasks) => {
+      .then(async (nextTasks) => {
         if (!cancelled) {
           setTasks(nextTasks);
+        }
+        const approvalSummaries = await loadApprovalSummaries(nextTasks);
+        if (!cancelled) {
+          setApprovalsByTask((current) => ({
+            ...current,
+            ...approvalSummaries,
+          }));
         }
       })
       .catch((error) => {
@@ -116,7 +141,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
       cancelled = true;
       closeStream();
     };
-  }, [closeStream]);
+  }, [closeStream, loadApprovalSummaries]);
 
   const submitMessage = useCallback(
     async (value: string) => {
@@ -151,12 +176,15 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
 
         const createdMessage = await messageApi.sendTaskMessage(task.id, question);
         setMessagesByTask((current) => upsertTaskRecordItem(current, task.id, createdMessage));
+        // Mock Agent 目前会同步生成事件、产物和审批；这里主动刷新一次快照，
+        // 避免 SSE 连接尚未完全建立时漏掉首轮进度和审批。
+        await loadTaskSnapshot(task.id);
       } catch (error) {
         message.error(error instanceof Error ? error.message : '发送失败');
         setInputValue(question);
       }
     },
-    [activeTaskId, openTask, tasks],
+    [activeTaskId, loadTaskSnapshot, openTask, tasks],
   );
 
   const createConversation = useCallback(() => {
@@ -225,6 +253,27 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
   const activeEvents = activeTaskId ? eventsByTask[activeTaskId] ?? [] : [];
   const activeArtifacts = activeTaskId ? artifactsByTask[activeTaskId] ?? [] : [];
   const activeApprovals = activeTaskId ? approvalsByTask[activeTaskId] ?? [] : [];
+  const pendingApprovalSummaries = useMemo(
+    () =>
+      tasks
+        .map((task) => ({
+          task,
+          approvals: (approvalsByTask[task.id] ?? []).filter((approval) => approval.status === 'pending'),
+        }))
+        .filter((item) => item.approvals.length > 0),
+    [approvalsByTask, tasks],
+  );
+  const pendingApprovalCount = pendingApprovalSummaries.reduce((count, item) => count + item.approvals.length, 0);
+  const approvalRecords = useMemo(
+    () =>
+      tasks.flatMap((task) =>
+        (approvalsByTask[task.id] ?? []).map((approval) => ({
+          approval,
+          task,
+        })),
+      ),
+    [approvalsByTask, tasks],
+  );
   const isChatting = Boolean(activeTask);
 
   return (
@@ -233,18 +282,26 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
         activeKey={activeTaskId}
         collapsed={sidebarCollapsed}
         currentUser={currentUser}
+        approvalRecords={approvalRecords}
         tasks={tasks}
         onActiveChange={(taskId) => void openTask(taskId)}
         onCreateConversation={createConversation}
         onLogout={handleLogout}
       />
 
-      <section className={`assistant-main ${isChatting ? 'is-chatting' : 'is-home'}`}>
+      <section
+        className={`assistant-main ${isChatting ? 'is-chatting' : 'is-home'} ${
+          workspaceCollapsed ? 'is-workspace-collapsed' : ''
+        }`}
+      >
         <WorkspaceHeader
           sidebarCollapsed={sidebarCollapsed}
           workspaceCollapsed={workspaceCollapsed}
+          pendingApprovalCount={pendingApprovalCount}
+          pendingApprovalSummaries={pendingApprovalSummaries}
           task={activeTask}
           onCreateConversation={createConversation}
+          onOpenTask={(taskId) => void openTask(taskId)}
           onToggleSidebar={toggleSidebar}
           onToggleWorkspace={toggleWorkspace}
         />
@@ -255,15 +312,18 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
               <section className="task-chat-column">
                 <ChatPanel
                   messages={activeMessages}
-                  approvals={activeApprovals}
-                  approvingId={approvingId}
-                  onApprove={approve}
                   onCopyMessage={copyMessage}
                   onEditMessage={editMessage}
-                  onReject={reject}
                 />
               </section>
-              <AgentWorkspace events={activeEvents} artifacts={activeArtifacts} />
+              <AgentWorkspace
+                approvals={activeApprovals}
+                approvingId={approvingId}
+                events={activeEvents}
+                artifacts={activeArtifacts}
+                onApprove={approve}
+                onReject={reject}
+              />
             </div>
           ) : (
             <ChatHome

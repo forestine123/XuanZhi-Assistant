@@ -1,5 +1,7 @@
 .assistant-shell {
   --chat-surface-width: 760px;
+  --agent-workspace-panel-width: 352px;
+  --task-workspace-gap: 18px;
 
   display: grid;
   grid-template-columns: 268px minmax(0, 1fr);
@@ -172,12 +174,87 @@
   gap: 4px;
 }
 
+.sidebar-account-popover.is-approvals .ant-popover-inner {
+  padding: 10px;
+}
+
 .sidebar-user-menu-item {
   justify-content: flex-start;
   width: 100%;
   height: 34px;
   padding-inline: 10px;
   border-radius: 8px;
+}
+
+.sidebar-approval-panel {
+  width: 320px;
+}
+
+.sidebar-approval-panel-header {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 10px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.sidebar-approval-panel-header .ant-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.sidebar-approval-list {
+  display: grid;
+  max-height: 320px;
+  overflow: auto;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.sidebar-approval-item {
+  display: grid;
+  width: 100%;
+  min-height: 54px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-approval-item:hover {
+  background: #f5f9ff;
+}
+
+.sidebar-approval-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-approval-copy .ant-typography {
+  max-width: 100%;
+  overflow: hidden;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-approval-copy strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.sidebar-approval-copy .ant-typography-secondary {
+  font-size: 12px;
 }
 
 .sidebar-settings-panel {
@@ -203,9 +280,7 @@
   min-width: 0;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
-  background:
-    radial-gradient(circle at 50% 22%, rgba(37, 99, 235, 0.07), transparent 34%),
-    #fbfcfe;
+  background: #fbfcfe;
 }
 
 .assistant-main.is-chatting {
@@ -249,6 +324,81 @@
   color: #8a93a3;
   font-size: 12px;
   line-height: 1;
+}
+
+.pending-approval-button {
+  height: 30px;
+  border-color: #dbe7fb;
+  border-radius: 999px;
+  color: #2563eb;
+  background: #f5f9ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pending-approval-button:hover {
+  border-color: #bcd2f8 !important;
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+}
+
+.pending-approval-overlay .ant-popover-inner {
+  padding: 10px;
+  border-radius: 14px;
+}
+
+.pending-approval-popover {
+  width: 300px;
+}
+
+.pending-approval-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.pending-approval-list {
+  display: grid;
+  max-height: 320px;
+  overflow: auto;
+  gap: 6px;
+}
+
+.pending-approval-item {
+  display: flex;
+  width: 100%;
+  height: auto;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.pending-approval-item:hover {
+  background: #f5f9ff !important;
+}
+
+.pending-approval-item-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pending-approval-item-main .ant-typography {
+  max-width: 100%;
+  overflow: hidden;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-toggle {
@@ -305,11 +455,9 @@
 }
 
 .task-workspace {
-  --agent-workspace-panel-width: 380px;
-
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--agent-workspace-panel-width);
-  gap: 18px;
+  gap: var(--task-workspace-gap);
   height: 100%;
   min-height: 0;
   transition:
@@ -329,21 +477,33 @@
 }
 
 .task-chat-column {
+  grid-column: 1;
+  grid-row: 1;
   overflow: auto;
 }
 
 .agent-workspace {
+  grid-column: 2;
+  grid-row: 1;
   overflow: hidden;
-  border-left: 1px solid transparent;
   transition:
-    border-color 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .agent-workspace-panel {
   width: var(--agent-workspace-panel-width);
-  height: 100%;
+  height: auto;
+  max-height: calc(100% - 18px);
   min-height: 0;
-  padding: 12px 0 18px;
+  margin: 2px 0 16px;
+  padding: 13px 15px;
+  overflow: hidden;
+  border: 1px solid #e1e7f0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 30px rgba(15, 23, 42, 0.06);
   opacity: 1;
   transform: translateX(0);
   transition:
@@ -351,8 +511,11 @@
     transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.agent-workspace-panel.has-pending-approval {
+  height: calc(100% - 18px);
+}
+
 .task-workspace.is-workspace-collapsed .agent-workspace {
-  border-left-color: transparent;
   pointer-events: none;
 }
 
@@ -362,54 +525,363 @@
 }
 
 .agent-workspace .ant-tabs {
-  height: 100%;
+  display: flex;
+  height: auto;
+  max-height: calc(100% - 48px);
+  min-height: 0;
+  flex-direction: column;
+}
+
+.agent-workspace-panel.has-pending-approval .ant-tabs {
+  height: calc(100% - 48px);
+}
+
+.agent-workspace-panel.is-compact .ant-tabs {
+  display: block;
+  max-height: none;
 }
 
 .agent-workspace .ant-tabs-content-holder,
 .agent-workspace .ant-tabs-content,
 .agent-workspace .ant-tabs-tabpane {
-  min-height: 0;
   height: 100%;
+  min-height: 0;
+}
+
+.agent-workspace .ant-tabs-content-holder {
+  flex: 1;
+}
+
+.agent-workspace-panel.is-compact .ant-tabs-content-holder,
+.agent-workspace-panel.is-compact .ant-tabs-content,
+.agent-workspace-panel.is-compact .ant-tabs-tabpane {
+  height: auto;
+  min-height: 0;
+}
+
+.agent-workspace-panel.is-compact .ant-tabs-content-holder {
+  flex: 0 0 auto;
 }
 
 .agent-workspace .ant-tabs-nav {
+  margin-bottom: 14px;
+}
+
+.agent-workspace .ant-tabs-tab {
+  padding: 7px 0 8px;
+  color: #111827;
+  font-size: 13px;
+}
+
+.agent-workspace .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 28px;
+}
+
+.agent-workspace .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #2563eb;
+}
+
+.agent-workspace .ant-tabs-ink-bar {
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+}
+
+.agent-workspace-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 10px;
 }
 
-.agent-timeline {
-  height: calc(100% - 4px);
-  overflow: auto;
-  padding: 6px 6px 12px;
+.agent-workspace-heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
 }
 
-.agent-timeline-item {
+.agent-workspace-heading .ant-typography {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.agent-workspace-heading .ant-typography strong,
+.agent-workspace-heading strong.ant-typography {
+  color: #111827;
+  font-size: 16px;
+}
+
+.approval-badge-anchor {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #eef5ff;
+  color: #2563eb;
+  font-size: 15px;
+}
+
+.progress-panel,
+.approval-center {
   display: flex;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.agent-workspace-panel.has-pending-approval .progress-panel,
+.agent-workspace-panel.has-pending-approval .approval-center {
+  height: 100%;
+}
+
+.agent-workspace-panel.is-compact .progress-panel,
+.agent-workspace-panel.is-compact .approval-center {
+  height: auto;
+}
+
+.progress-panel {
+  gap: 12px;
+}
+
+.agent-progress-card {
+  min-height: 0;
+  flex: 0 1 auto;
+  overflow: auto;
+  padding: 2px 0 12px;
+}
+
+.agent-workspace-panel.has-pending-approval .agent-progress-card {
+  flex: 1;
+}
+
+.agent-workspace-panel.is-compact .agent-progress-card {
+  overflow: visible;
+}
+
+.agent-section-title {
+  display: block;
+  margin-bottom: 10px;
+  color: #8a93a3 !important;
+  font-size: 13px;
+}
+
+.agent-progress-list {
+  display: grid;
+  gap: 14px;
+}
+
+.agent-progress-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.agent-progress-row:not(:last-child)::after {
+  position: absolute;
+  top: 24px;
+  bottom: -14px;
+  left: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: #edf1f7;
+  content: "";
+}
+
+.agent-progress-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #9ca3af;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #9ca3af;
+}
+
+.agent-progress-icon::after {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+  content: "";
+}
+
+.agent-progress-row.is-success .agent-progress-icon {
+  border-color: #9ca3af;
+  background: #9ca3af;
+}
+
+.agent-progress-row.is-success .agent-progress-icon::after {
+  width: 4px;
+  height: 7px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  border-radius: 0;
+  background: transparent;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.agent-progress-row.is-running .agent-progress-icon {
+  border-color: #9ca3af;
+}
+
+.agent-progress-row.is-running .agent-progress-icon::after {
+  background: #9ca3af;
+}
+
+.agent-progress-row.is-waiting .agent-progress-icon,
+.agent-progress-row.is-error .agent-progress-icon {
+  border-color: #9ca3af;
+}
+
+.agent-progress-copy {
+  display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 4px;
+  padding-top: 1px;
   line-height: 1.45;
+}
+
+.agent-progress-copy .ant-typography {
+  margin: 0;
+}
+
+.agent-progress-copy strong {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.agent-progress-copy .ant-typography-secondary {
+  color: #8a93a3;
+  font-size: 12px;
+}
+
+.progress-approval-stack {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.agent-section-divider {
+  margin: 2px 0 14px;
+  border-color: #edf1f7;
+}
+
+.approval-center {
+  overflow: hidden;
+}
+
+.approval-record-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.approval-record-list .ant-list-item {
+  padding: 0;
+  border-block-end: 0;
+}
+
+.approval-record-item + .approval-record-item {
+  margin-top: 10px;
+}
+
+.approval-record-main {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e7edf6;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.approval-record-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.approval-record-title .ant-typography {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.approval-record-actions {
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .artifact-panel {
   display: grid;
-  grid-template-rows: minmax(92px, auto) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   height: 100%;
   min-height: 0;
 }
 
 .artifact-list {
-  max-height: 148px;
+  max-height: 112px;
   overflow: auto;
 }
 
 .artifact-list .ant-list-item {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
   cursor: pointer;
-  border-radius: 8px;
-  padding-inline: 8px;
+  border-block-end: 0;
+  border-radius: 9px;
+  padding: 0 8px;
 }
 
 .artifact-list .ant-list-item.is-active {
-  background: #edf5ff;
+  background: #e8eef7;
+}
+
+.artifact-list .ant-list-item-meta {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+}
+
+.artifact-list .ant-list-item-meta-avatar {
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  margin-inline-end: 8px;
+  color: #334155;
+  font-size: 15px;
+}
+
+.artifact-list .ant-list-item-meta-content {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+}
+
+.artifact-list .ant-list-item-meta-title {
+  margin-bottom: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .artifact-viewer {

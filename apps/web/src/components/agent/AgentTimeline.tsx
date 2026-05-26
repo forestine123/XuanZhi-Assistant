@@ -1,25 +1,8 @@
-import { ClockCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, CheckCircleOutlined } from '@ant-design/icons';
-import { Empty, Timeline, Typography } from 'antd';
+import { Empty, Typography } from 'antd';
 
 import type { AgentEvent } from '../../types/protocol';
 
 const { Text } = Typography;
-
-const statusIcon = {
-  pending: <ClockCircleOutlined />,
-  running: <LoadingOutlined />,
-  success: <CheckCircleOutlined />,
-  error: <ExclamationCircleOutlined />,
-  waiting: <ClockCircleOutlined />,
-};
-
-const statusColor = {
-  pending: 'gray',
-  running: 'blue',
-  success: 'green',
-  error: 'red',
-  waiting: 'orange',
-};
 
 type AgentTimelineProps = {
   events: AgentEvent[];
@@ -31,19 +14,25 @@ export function AgentTimeline({ events }: AgentTimelineProps) {
   }
 
   return (
-    <Timeline
-      className="agent-timeline"
-      items={events.map((event) => ({
-        key: event.id,
-        color: statusColor[event.status ?? 'pending'],
-        dot: statusIcon[event.status ?? 'pending'],
-        children: (
-          <div className="agent-timeline-item">
-            <Text strong>{event.title}</Text>
-            {event.message ? <Text type="secondary">{event.message}</Text> : null}
-          </div>
-        ),
-      }))}
-    />
+    <section className="agent-progress-card">
+      <Text className="agent-section-title" type="secondary">
+        进度
+      </Text>
+      <div className="agent-progress-list">
+        {events.map((event) => {
+          const status = event.status ?? 'pending';
+
+          return (
+            <div key={event.id} className={`agent-progress-row is-${status}`}>
+              <span className="agent-progress-icon" aria-hidden="true" />
+              <span className="agent-progress-copy">
+                <Text strong>{event.title}</Text>
+                {event.message ? <Text type="secondary">{event.message}</Text> : null}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

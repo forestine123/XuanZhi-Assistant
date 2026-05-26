@@ -1,25 +1,73 @@
-import { Button, Space, Tooltip } from 'antd';
+import { Badge, Button, Empty, Popover, Space, Tag, Tooltip, Typography } from 'antd';
 import { MenuFoldOutlined, MenuUnfoldOutlined, MoreOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 
-import type { Task } from '../../types/protocol';
+import type { Approval, Task } from '../../types/protocol';
+
+const { Text } = Typography;
+
+const taskStatusLabel = {
+  created: '已创建',
+  planning: '规划中',
+  running: '执行中',
+  waiting_approval: '等待确认',
+  completed: '已完成',
+  failed: '失败',
+} satisfies Record<Task['status'], string>;
 
 type WorkspaceHeaderProps = {
+  pendingApprovalCount: number;
+  pendingApprovalSummaries: Array<{
+    task: Task;
+    approvals: Approval[];
+  }>;
   sidebarCollapsed: boolean;
   workspaceCollapsed: boolean;
   task?: Task;
   onCreateConversation: () => void;
+  onOpenTask: (taskId: string) => void;
   onToggleSidebar: () => void;
   onToggleWorkspace: () => void;
 };
 
 export function WorkspaceHeader({
+  pendingApprovalCount,
+  pendingApprovalSummaries,
   sidebarCollapsed,
   workspaceCollapsed,
   task,
   onCreateConversation,
+  onOpenTask,
   onToggleSidebar,
   onToggleWorkspace,
 }: WorkspaceHeaderProps) {
+  const pendingApprovalContent =
+    pendingApprovalSummaries.length > 0 ? (
+      <div className="pending-approval-popover">
+        <div className="pending-approval-popover-header">
+          <Text strong>待审批任务</Text>
+          <Tag color="blue">{pendingApprovalCount}</Tag>
+        </div>
+        <div className="pending-approval-list">
+          {pendingApprovalSummaries.map(({ task: pendingTask, approvals }) => (
+            <Button
+              key={pendingTask.id}
+              type="text"
+              className="pending-approval-item"
+              onClick={() => onOpenTask(pendingTask.id)}
+            >
+              <span className="pending-approval-item-main">
+                <Text strong>{pendingTask.title}</Text>
+                <Text type="secondary">{approvals[0]?.title ?? '待处理审批'}</Text>
+              </span>
+              <Tag color="warning">{approvals.length}</Tag>
+            </Button>
+          ))}
+        </div>
+      </div>
+    ) : (
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待审批任务" />
+    );
+
   return (
     <header className="workspace-header">
       <div className="workspace-header-start">
@@ -49,11 +97,25 @@ export function WorkspaceHeader({
         {task ? (
           <div className="workspace-title">
             <span>{task.title}</span>
-            <small>{task.status}</small>
+            <small>{taskStatusLabel[task.status]}</small>
           </div>
         ) : null}
       </div>
       <Space size={8}>
+        {pendingApprovalCount > 0 ? (
+          <Popover
+            content={pendingApprovalContent}
+            overlayClassName="pending-approval-overlay"
+            placement="bottomRight"
+            trigger={['hover', 'click']}
+          >
+            <Badge count={pendingApprovalCount} size="small">
+              <Button className="pending-approval-button" type="default">
+                待审批 {pendingApprovalCount}
+              </Button>
+            </Badge>
+          </Popover>
+        ) : null}
         <Tooltip title="搜索">
           <Button type="text" shape="circle" icon={<SearchOutlined />} />
         </Tooltip>

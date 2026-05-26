@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Avatar, Button, Modal, Popover, Tag, Typography } from 'antd';
+import { Avatar, Button, Empty, Modal, Popover, Tag, Typography } from 'antd';
 import { Conversations } from '@ant-design/x';
 import {
+  ArrowLeftOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
@@ -15,12 +16,16 @@ import {
 } from '@ant-design/icons';
 
 import { BrandLockup } from '../brand/BrandLockup';
-import type { Task, User } from '../../types/protocol';
+import type { Approval, Task, User } from '../../types/protocol';
 
 const { Text } = Typography;
 
 type SidebarProps = {
   activeKey?: string;
+  approvalRecords: Array<{
+    approval: Approval;
+    task: Task;
+  }>;
   collapsed: boolean;
   currentUser: User;
   tasks: Task[];
@@ -38,8 +43,15 @@ const taskStatusMeta = {
   failed: { label: '失败', icon: <CloseCircleOutlined />, color: 'error' },
 } satisfies Record<Task['status'], { label: string; icon: ReactNode; color: string }>;
 
+const approvalStatusMeta = {
+  pending: { label: '待确认', color: 'warning' },
+  approved: { label: '已确认', color: 'success' },
+  rejected: { label: '已拒绝', color: 'error' },
+} satisfies Record<Approval['status'], { label: string; color: string }>;
+
 export function Sidebar({
   activeKey,
+  approvalRecords,
   collapsed,
   currentUser,
   tasks,
@@ -48,6 +60,7 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [accountPanel, setAccountPanel] = useState<'menu' | 'approvals'>('menu');
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const openSettings = () => {
@@ -55,13 +68,61 @@ export function Sidebar({
     setSettingsOpen(true);
   };
 
+  const openApprovals = () => {
+    setAccountPanel('approvals');
+  };
+
+  const openApprovalTask = (taskId: string) => {
+    setAccountMenuOpen(false);
+    setAccountPanel('menu');
+    onActiveChange(taskId);
+  };
+
   const logout = () => {
     setAccountMenuOpen(false);
     onLogout();
   };
 
-  const accountMenu = (
+  const accountMenu =
+    accountPanel === 'approvals' ? (
+      <div className="sidebar-approval-panel">
+        <div className="sidebar-approval-panel-header">
+          <Button
+            type="text"
+            size="small"
+            icon={<ArrowLeftOutlined />}
+            aria-label="返回账户菜单"
+            onClick={() => setAccountPanel('menu')}
+          />
+          <Text strong>审批记录</Text>
+          <Tag color="blue">{approvalRecords.length}</Tag>
+        </div>
+        {approvalRecords.length > 0 ? (
+          <div className="sidebar-approval-list">
+            {approvalRecords.map(({ approval, task }) => (
+              <button
+                key={approval.id}
+                type="button"
+                className="sidebar-approval-item"
+                onClick={() => openApprovalTask(task.id)}
+              >
+                <span className="sidebar-approval-copy">
+                  <Text strong>{approval.title}</Text>
+                  <Text type="secondary">{task.title}</Text>
+                </span>
+                <Tag color={approvalStatusMeta[approval.status].color}>{approvalStatusMeta[approval.status].label}</Tag>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无审批记录" />
+        )}
+      </div>
+    ) : (
     <div className="sidebar-user-menu">
+      <Button type="text" icon={<CheckCircleOutlined />} className="sidebar-user-menu-item" onClick={openApprovals}>
+        审批记录
+      </Button>
       <Button type="text" icon={<SettingOutlined />} className="sidebar-user-menu-item" onClick={openSettings}>
         设置
       </Button>
@@ -114,8 +175,14 @@ export function Sidebar({
             trigger="click"
             placement="topRight"
             open={accountMenuOpen}
-            onOpenChange={setAccountMenuOpen}
+            onOpenChange={(open) => {
+              setAccountMenuOpen(open);
+              if (!open) {
+                setAccountPanel('menu');
+              }
+            }}
             content={accountMenu}
+            overlayClassName={accountPanel === 'approvals' ? 'sidebar-account-popover is-approvals' : 'sidebar-account-popover'}
           >
             <Button type="text" size="small" icon={<MoreOutlined />} aria-label="账户菜单" />
           </Popover>
