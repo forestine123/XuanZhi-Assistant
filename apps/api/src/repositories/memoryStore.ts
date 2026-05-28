@@ -117,17 +117,47 @@ export class MemoryStore {
     return task;
   }
 
-  addMessage(input: { userId: string; taskId: string; role: Message['role']; content: string }) {
+  addMessage(input: {
+    userId: string;
+    taskId: string;
+    role: Message['role'];
+    content: string;
+    status?: Message['status'];
+  }) {
     const message: Message = {
       id: `msg_${randomUUID()}`,
       userId: input.userId,
       taskId: input.taskId,
       role: input.role,
       content: input.content,
+      status: input.status,
       createdAt: nowIso(),
     };
     this.messages.set(input.taskId, [...(this.messages.get(input.taskId) ?? []), message]);
     return message;
+  }
+
+  updateMessage(taskId: string, messageId: string, input: { content?: string; status?: Message['status'] }) {
+    const messages = this.messages.get(taskId);
+    if (!messages) {
+      return undefined;
+    }
+
+    const current = messages.find((message) => message.id === messageId);
+    if (!current) {
+      return undefined;
+    }
+
+    const updated: Message = {
+      ...current,
+      content: input.content ?? current.content,
+      status: input.status ?? current.status,
+    };
+    this.messages.set(
+      taskId,
+      messages.map((message) => (message.id === messageId ? updated : message)),
+    );
+    return updated;
   }
 
   listMessages(taskId: string) {

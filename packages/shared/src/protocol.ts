@@ -19,6 +19,8 @@ export type TaskStatus = 'created' | 'planning' | 'running' | 'waiting_approval'
 
 export type TaskIntent = 'meeting' | 'business' | 'coding' | 'qa' | 'general';
 
+export type MessageStatus = 'streaming' | 'completed' | 'failed';
+
 export type Task = {
   id: string;
   userId: string;
@@ -36,6 +38,7 @@ export type Message = {
   taskId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  status?: MessageStatus;
   createdAt: string;
 };
 
@@ -86,6 +89,7 @@ export type Approval = {
 export type StreamEvent =
   | { type: 'task.updated'; data: Task }
   | { type: 'message.created'; data: Message }
+  | { type: 'message.updated'; data: Message }
   | { type: 'agent.event.created'; data: AgentEvent }
   | { type: 'artifact.created'; data: Artifact }
   | { type: 'approval.requested'; data: Approval }
