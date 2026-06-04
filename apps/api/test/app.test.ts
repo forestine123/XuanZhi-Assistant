@@ -12,7 +12,8 @@ const gateway = vi.hoisted(() => {
   const handlers = new Map<string, Set<Handler>>();
   const calls: Array<{ method: string; params?: unknown }> = [];
   const agents: Array<{ id: string; name: string; workspace: string }> = [];
-  const sessions: Array<{ key: string; title: string; agentId: string; createdAt: string; updatedAt: string }> = [];
+  const sessions: Array<{ key: string; title: string; agentId: string; createdAt: string; updatedAt: string; parentSessionKey?: string }> = [];
+  const agentFiles = new Map<string, string>();
   let agentSequence = 0;
   let shouldFailProfileWrites = false;
 
@@ -53,16 +54,32 @@ const gateway = vi.hoisted(() => {
         };
       }
 
-      if (method === 'agents.files.set' && shouldFailProfileWrites) {
-        throw new Error('profile write failed');
+      if (method === 'agents.files.set') {
+        if (shouldFailProfileWrites) {
+          throw new Error('profile write failed');
+        }
+        const input = params as { agentId: string; name: string; content: string };
+        agentFiles.set(`${input.agentId}:${input.name}`, input.content);
+        return { ok: true };
       }
 
-      if (method === 'agents.update' || method === 'agents.files.set') {
+      if (method === 'agents.files.get') {
+        const input = params as { agentId: string; name: string };
+        const content = agentFiles.get(`${input.agentId}:${input.name}`);
+        return content ? { file: { name: input.name, content } } : { file: null };
+      }
+
+      if (method === 'agent.identity.get') {
+        const input = params as { agentId: string };
+        return { agentId: input.agentId, source: 'test-gateway' };
+      }
+
+      if (method === 'agents.update') {
         return { ok: true };
       }
 
       if (method === 'sessions.create') {
-        const input = params as { key: string; agentId: string; label?: string };
+        const input = params as { key: string; agentId: string; label?: string; parentSessionKey?: string };
         const key = input.key === 'main'
           ? `agent:${input.agentId}:main`
           : `agent:${input.agentId}:${input.key}`;
@@ -73,6 +90,7 @@ const gateway = vi.hoisted(() => {
             agentId: input.agentId,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            parentSessionKey: input.parentSessionKey,
           });
         }
         return { key };
@@ -138,6 +156,7 @@ const gateway = vi.hoisted(() => {
       calls.length = 0;
       agents.length = 0;
       sessions.length = 0;
+      agentFiles.clear();
       handlers.clear();
       agentSequence = 0;
       shouldFailProfileWrites = false;
@@ -446,7 +465,7 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
     );
     const fileSetCalls = gateway.calls.filter((call) => call.method === 'agents.files.set');
     expect(fileSetCalls.map((call) => (call.params as { name: string }).name)).toEqual(
-      expect.arrayContaining(['USER.md', 'AGENTS.md']),
+      expect.arrayContaining(['USER.md', 'AGENTS.md', 'IDENTITY.md', 'SOUL.md']),
     );
     expect(JSON.stringify(fileSetCalls.map((call) => call.params))).toContain('张三');
     expect(JSON.stringify(fileSetCalls.map((call) => call.params))).toContain('密评工程师');
@@ -461,6 +480,45 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
     });
     expect(messages.at(-1)?.content).toContain('Explain the uploaded notes');
     expect(events.map((event) => event.type)).toContain('agent.answer.created');
+  });
+
+  it('syncs and reads all OpenClaw agent profile bootstrap files', async () => {
+    const userA = await login(app, 'alice');
+    const agentId = userA.agent?.id;
+    expect(agentId).toBeTruthy();
+
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/agents/${agentId}/profile`,
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { profile: testProfile },
+    });
+
+    const syncResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/sync-profile`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+
+    expect(syncResponse.statusCode).toBe(200);
+
+    const profileResponse = await app.inject({
+      method: 'GET',
+      url: `/api/agents/${agentId}/openclaw-profile`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+
+    expect(profileResponse.statusCode).toBe(200);
+    const body = profileResponse.json<{
+      files: Array<{ name: string; available: boolean; content: string }>;
+      bootstrapFiles: string[];
+    }>();
+
+    expect(body.bootstrapFiles).toEqual(['USER.md', 'AGENTS.md', 'IDENTITY.md', 'SOUL.md']);
+    expect(body.files.map((file) => file.name)).toEqual(body.bootstrapFiles);
+    expect(body.files.every((file) => file.available)).toBe(true);
+    expect(body.files.find((file) => file.name === 'IDENTITY.md')?.content).toContain(testProfile.agentName);
+    expect(body.files.find((file) => file.name === 'SOUL.md')?.content).toContain('Default language');
   });
 
   it('continues chat when profile file sync fails', async () => {
@@ -604,6 +662,78 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
         }),
       ]),
     );
+  });
+
+  it('opens an Agent main task and creates child OpenClaw conversations', async () => {
+    const userA = await login(app, 'alice');
+    const agentId = userA.agent?.id;
+    expect(agentId).toBeTruthy();
+
+    const mainResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/main-task`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+
+    expect(mainResponse.statusCode).toBe(200);
+    const mainTask = mainResponse.json<Task>();
+    expect(mainTask).toMatchObject({
+      userId: userA.user.id,
+      agentId,
+      status: 'completed',
+    });
+    expect(mainTask.sessionKey).toMatch(/^agent:gateway-agent-\d+:main$/);
+
+    const conversationResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/conversations`,
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { title: 'Follow-up OpenClaw session' },
+    });
+
+    expect(conversationResponse.statusCode).toBe(200);
+    const childTask = conversationResponse.json<Task>();
+    expect(childTask).toMatchObject({
+      userId: userA.user.id,
+      agentId,
+      title: 'Follow-up OpenClaw session',
+      status: 'completed',
+    });
+    expect(childTask.sessionKey).toContain(`task:${childTask.id}`);
+
+    const sessionCreateCalls = gateway.calls.filter((call) => call.method === 'sessions.create');
+    expect(sessionCreateCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ params: expect.objectContaining({ key: 'main' }) }),
+        expect.objectContaining({
+          params: expect.objectContaining({
+            key: `task:${childTask.id}`,
+            parentSessionKey: mainTask.sessionKey,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('blocks cross-user access to Agent session management routes', async () => {
+    const userA = await login(app, 'alice');
+    const userB = await login(app, 'bob');
+
+    const rejectedMainTask = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${userA.agent?.id}/main-task`,
+      headers: { authorization: `Bearer ${userB.token}` },
+    });
+
+    const rejectedConversation = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${userA.agent?.id}/conversations`,
+      headers: { authorization: `Bearer ${userB.token}` },
+      payload: { title: 'Cross-user attempt' },
+    });
+
+    expect(rejectedMainTask.statusCode).toBe(404);
+    expect(rejectedConversation.statusCode).toBe(404);
   });
 
   it('rejects cross-user stream access', async () => {

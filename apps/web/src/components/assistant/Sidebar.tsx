@@ -17,7 +17,6 @@ type SidebarProps = {
   onActiveChange: (taskId: string) => void;
   onAgentSelect: (agentId: string) => void;
   onCreateAgent: () => void;
-  onCreateConversation: () => void;
   onWorkspaceChange: (workspace: WorkspaceKey) => void;
   onLogout: () => void;
 };
@@ -219,7 +218,6 @@ export function Sidebar({
   onActiveChange,
   onAgentSelect,
   onCreateAgent,
-  onCreateConversation,
   onWorkspaceChange,
   onLogout,
 }: SidebarProps) {
@@ -327,13 +325,7 @@ export function Sidebar({
                       .filter(Boolean)
                       .join(' ')}
                     type="button"
-                    onClick={() => {
-                      if (selected) {
-                        onCreateConversation();
-                        return;
-                      }
-                      onAgentSelect(agent.id);
-                    }}
+                    onClick={() => onAgentSelect(agent.id)}
                   >
                     <span className="agent-card-avatar-wrap">
                       <span className={`agent-card-avatar is-${agent.tone}`}>

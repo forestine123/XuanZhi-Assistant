@@ -277,6 +277,41 @@ test('agent flow uses the backend-owned user agent and isolates conversations pe
   assert.match(assistantCss, /agent-list/, 'expected sidebar multi-agent list styles');
 });
 
+test('OpenClaw session behavior is added without replacing the main UI surface', async () => {
+  const shell = await read('src/components/assistant/AssistantShell.tsx');
+  const sidebar = await read('src/components/assistant/Sidebar.tsx');
+  const composer = await read('src/components/chat/ChatComposer.tsx');
+  const home = await read('src/components/chat/ChatHome.tsx');
+  const agentApi = await read('src/services/agentApi.ts');
+  const profilePanel = await read('src/components/assistant/AgentProfilePanel.tsx');
+
+  assert.match(agentApi, /syncAgentProfile/, 'expected profile sync API client');
+  assert.match(agentApi, /getOpenClawAgentProfile/, 'expected OpenClaw profile read API client');
+  assert.match(agentApi, /openMainTask/, 'expected main OpenClaw task API client');
+  assert.match(agentApi, /createConversation/, 'expected child conversation API client');
+
+  assert.match(profilePanel, /getOpenClawAgentProfile/, 'expected settings profile panel to read OpenClaw files');
+  assert.match(profilePanel, /syncAgentProfile/, 'expected settings profile panel to resync profile files');
+  assert.match(profilePanel, /openclaw-profile-file-grid/, 'expected profile file status to use the existing settings styling surface');
+
+  assert.match(shell, /function isMainTask/, 'expected main session tasks to be identified');
+  assert.match(shell, /agentApi\.openMainTask/, 'expected clicking an agent to open its main task');
+  assert.match(shell, /agentApi\.createConversation/, 'expected new conversations to create OpenClaw child sessions');
+  assert.match(shell, /activeAgentTasks\.filter\(\(task\) => !isMainTask\(task\)\)/, 'expected main sessions to stay out of the normal conversation list');
+  assert.match(shell, /submitCommand/, 'expected command messages to flow through the existing composer path');
+  assert.match(shell, /command === '\/reset'/, 'expected reset to ask for confirmation before sending');
+  assert.match(shell, /renderKey=\{token\}/, 'expected existing auth-sensitive chat renderer wiring to remain');
+
+  assert.match(sidebar, /assistant-nav-rail/, 'expected existing sidebar rail UI to remain');
+  assert.match(sidebar, /onAgentSelect/, 'expected existing agent-card click prop to remain');
+  assert.doesNotMatch(sidebar, /onOpenAgentMain/, 'expected no pr-4 sidebar prop rename that rewrites the UI contract');
+
+  assert.match(composer, /export type ComposerCommand/, 'expected composer command type');
+  assert.match(composer, /'\/reset'/, 'expected reset command support');
+  assert.match(composer, /sender-footer-actions/, 'expected existing composer actions to remain');
+  assert.match(home, /onCommand/, 'expected home composer to pass command callbacks');
+});
+
 test('file workspace renders the screenshot-style file space', async () => {
   const shell = await read('src/components/assistant/AssistantShell.tsx');
   const sidebar = await read('src/components/assistant/Sidebar.tsx');

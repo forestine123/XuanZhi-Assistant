@@ -1,16 +1,17 @@
 import { Prompts } from '@ant-design/x';
 
 import { promptItems } from '../../data/assistantData';
-import { ChatComposer } from './ChatComposer';
+import { ChatComposer, type ComposerCommand } from './ChatComposer';
 
 type ChatHomeProps = {
   inputValue: string;
   onInputChange: (value: string) => void;
+  onCommand?: (command: ComposerCommand) => void;
   onPromptSelect: (key: string) => void;
   onSubmitMessage: (value: string) => void;
 };
 
-export function ChatHome({ inputValue, onInputChange, onPromptSelect, onSubmitMessage }: ChatHomeProps) {
+export function ChatHome({ inputValue, onInputChange, onCommand, onPromptSelect, onSubmitMessage }: ChatHomeProps) {
   return (
     <div className="home-canvas">
       <div className="home-title-wrap">
@@ -30,7 +31,13 @@ export function ChatHome({ inputValue, onInputChange, onPromptSelect, onSubmitMe
         onItemClick={({ data }) => onPromptSelect(String(data.key))}
       />
 
-      <ChatComposer value={inputValue} variant="home" onChange={onInputChange} onSubmit={onSubmitMessage} />
+      <ChatComposer
+        value={inputValue}
+        variant="home"
+        onChange={onInputChange}
+        onCommand={onCommand}
+        onSubmit={onSubmitMessage}
+      />
     </div>
   );
 }

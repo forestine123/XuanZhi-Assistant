@@ -4,7 +4,10 @@ type GatewayClient = {
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
 };
 
-type ProfileAgent = Pick<Agent, 'id' | 'name' | 'gatewayAgentId' | 'profile' | 'emoji'>;
+type ProfileAgent = Pick<Agent, 'id' | 'name' | 'gatewayAgentId'> & {
+  emoji?: Agent['emoji'];
+  profile?: Agent['profile'];
+};
 
 const experienceLabels: Record<string, string> = {
   beginner: '初级',
@@ -75,6 +78,48 @@ function buildAgentsMd(agent: ProfileAgent, profile: XuanzhiAgentProfile) {
   ].join('\n');
 }
 
+function buildIdentityMd(agent: ProfileAgent, profile: XuanzhiAgentProfile) {
+  return [
+    '# IDENTITY.md - Who Am I?',
+    '',
+    `- **Name:** ${profile.agentName || agent.name}`,
+    `- **Role:** ${profile.identity.role || 'XuanZhi workspace assistant'}`,
+    `- **Human:** ${valueOrEmpty(profile.identity.displayName)}`,
+    `- **Organization:** ${valueOrEmpty(profile.identity.organization)}`,
+    `- **Emoji:** ${agent.emoji || 'assistant'}`,
+    '',
+    '---',
+    '',
+    `You are the dedicated OpenClaw agent for ${valueOrEmpty(profile.identity.displayName)}. Keep this identity stable across sessions and use USER.md as the source of truth for user preferences.`,
+    '',
+  ].join('\n');
+}
+
+function buildSoulMd(profile: XuanzhiAgentProfile) {
+  return [
+    '# SOUL.md - How You Work',
+    '',
+    '## Core Principles',
+    '',
+    '- Be useful before being verbose.',
+    '- Keep user workspaces isolated. Never reuse context from another user.',
+    '- Use the local workspace, memory, tools, and session history as your source of continuity.',
+    '- Ask for confirmation before risky external actions.',
+    '',
+    '## Working Style',
+    '',
+    `- Default language: ${profile.requirements.language ?? 'zh-CN'}.`,
+    `- Preferred tone: ${profile.requirements.tone ?? 'concise'}.`,
+    `- Preferred depth: ${profile.requirements.depth ?? 'standard'}.`,
+    '- When the user asks what you know about them, summarize from USER.md and AGENTS.md.',
+    '',
+    '## Bootstrap Contract',
+    '',
+    'Read USER.md, AGENTS.md, IDENTITY.md, TOOLS.md, and MEMORY.md at the start of a session when OpenClaw provides them in bootstrap context.',
+    '',
+  ].join('\n');
+}
+
 export function buildProfileFiles(agent: ProfileAgent) {
   if (!agent.profile) {
     return [];
@@ -88,6 +133,14 @@ export function buildProfileFiles(agent: ProfileAgent) {
     {
       name: 'AGENTS.md',
       content: buildAgentsMd(agent, agent.profile),
+    },
+    {
+      name: 'IDENTITY.md',
+      content: buildIdentityMd(agent, agent.profile),
+    },
+    {
+      name: 'SOUL.md',
+      content: buildSoulMd(agent.profile),
     },
   ];
 }

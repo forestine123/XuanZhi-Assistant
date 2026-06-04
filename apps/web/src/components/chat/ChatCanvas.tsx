@@ -53,9 +53,8 @@ export function ChatCanvas({ messages, renderKey, onCopyMessage, onEditMessage }
           role: message.role === 'user' ? 'user' : 'assistant',
           content:
             message.role === 'assistant' ? (
-              <AssistantMessageContent
+              <AssistantMessageContent message={message}
                 key={`${message.id}:${renderKey}`}
-                message={message}
                 normalized={normalized}
               />
             ) : (
