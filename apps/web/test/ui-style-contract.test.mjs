@@ -126,6 +126,7 @@ test('task streams are isolated when switching conversations', async () => {
 
 test('assistant messages render model markdown instead of raw markdown text', async () => {
   const chatCanvas = await read('src/components/chat/ChatCanvas.tsx');
+  const assistantMessage = await read('src/components/chat/AssistantMessageContent.tsx');
   const markdownContentExists = await exists('src/components/chat/MarkdownContent.tsx');
   const chatCss = await read('src/styles/chat.css');
 
@@ -134,14 +135,109 @@ test('assistant messages render model markdown instead of raw markdown text', as
   assert.match(markdownContent, /@ant-design\/x-markdown/, 'expected the renderer to use @ant-design/x-markdown');
   assert.match(markdownContent, /className="assistant-markdown"/, 'expected XMarkdown to receive the assistant markdown class');
   assert.match(markdownContent, /content=\{content\}/, 'expected XMarkdown to receive the assistant content');
+  assert.match(markdownContent, /hasMarkdownSyntax/, 'expected plain assistant text to be detected before markdown rendering');
+  assert.match(markdownContent, /assistant-plain-text/, 'expected short plain assistant messages to have a non-markdown fallback');
   assert.match(markdownContent, /hasNextChunk:\s*streaming/, 'expected XMarkdown streaming to track the live message state');
   assert.match(markdownContent, /tail:\s*streaming/, 'expected XMarkdown to show a streaming tail only for live messages');
-  assert.match(chatCanvas, /<MarkdownContent content=\{message\.content\}/, 'expected assistant messages to use MarkdownContent');
-  assert.match(chatCanvas, /streaming=\{message\.status === 'streaming'\}/, 'expected assistant message status to enable streaming markdown');
+  assert.match(chatCanvas, /<AssistantMessageContent message=\{message\}/, 'expected assistant messages to use the custom renderer');
+  assert.match(assistantMessage, /<MarkdownContent content=\{finalAnswer\}/, 'expected final answers to use MarkdownContent');
+  assert.match(assistantMessage, /streaming=\{message\.status === 'streaming'\}/, 'expected assistant message status to enable streaming markdown');
   assert.match(chatCanvas, /message\.role === 'assistant'/, 'expected markdown rendering to be scoped to assistant messages');
   assert.match(chatCss, /assistant-markdown/, 'expected markdown content styles');
+  assert.match(chatCss, /assistant-plain-text/, 'expected plain assistant text fallback styles');
+  assert.match(chatCss, /white-space:\s*pre-wrap/, 'expected plain assistant messages to preserve line breaks');
   assert.match(chatCss, /assistant-markdown strong/, 'expected bold markdown styling');
   assert.match(chatCss, /assistant-markdown ol/, 'expected ordered-list markdown styling');
+});
+
+test('assistant execution details are normalized into user-facing message sections', async () => {
+  const chatCanvas = await read('src/components/chat/ChatCanvas.tsx');
+  const assistantMessageExists = await exists('src/components/chat/AssistantMessageContent.tsx');
+  const executionSummaryExists = await exists('src/components/chat/AgentExecutionSummary.tsx');
+  const codeCardExists = await exists('src/components/chat/CodeCard.tsx');
+  const runResultExists = await exists('src/components/chat/RunResult.tsx');
+  const normalizeExists = await exists('src/utils/agentMessage.ts');
+  const chatCss = await read('src/styles/chat.css');
+
+  assert.equal(assistantMessageExists, true, 'expected a dedicated assistant message renderer');
+  assert.equal(executionSummaryExists, true, 'expected a reusable execution summary component');
+  assert.equal(codeCardExists, true, 'expected fenced code to render as code cards');
+  assert.equal(runResultExists, true, 'expected command output to render outside code blocks');
+  assert.equal(normalizeExists, true, 'expected a normalize layer before rendering raw agent events');
+
+  const assistantMessage = await read('src/components/chat/AssistantMessageContent.tsx');
+  const executionSummary = await read('src/components/chat/AgentExecutionSummary.tsx');
+  const codeCard = await read('src/components/chat/CodeCard.tsx');
+  const runResult = await read('src/components/chat/RunResult.tsx');
+  const normalize = await read('src/utils/agentMessage.ts');
+
+  assert.match(chatCanvas, /<AssistantMessageContent message=\{message\}/, 'expected assistant messages to use the custom renderer');
+  assert.doesNotMatch(chatCanvas, /<MarkdownContent content=\{message\.content\}/, 'expected raw assistant content not to be rendered directly');
+
+  assert.match(assistantMessage, /normalizeAgentMessage\(message\)/, 'expected renderer to normalize message content');
+  assert.match(assistantMessage, /<AgentExecutionSummary steps=\{steps\}/, 'expected execution summary section');
+  assert.match(assistantMessage, /<MarkdownContent content=\{finalAnswer\}/, 'expected final answer section');
+  assert.match(assistantMessage, /<CodeCard/, 'expected code block section');
+  assert.match(assistantMessage, /<RunResult/, 'expected run result section');
+
+  assert.match(executionSummary, /已完成 \{completedCount\} 个步骤/, 'expected collapsed standard summary text');
+  assert.match(executionSummary, /正在执行第 \{runningIndex \+ 1\} \/ \{steps\.length\} 个步骤/, 'expected running summary text');
+  assert.match(executionSummary, /执行失败，已完成 \{completedCount\} \/ \{steps\.length\} 个步骤/, 'expected error summary text');
+  assert.doesNotMatch(executionSummary, /未知操作完成|write完成|exec完成|exec: command run|Tool output/, 'expected standard UI not to expose raw debug labels');
+  assert.match(executionSummary, /mode === 'debug'/, 'expected raw diagnostics to stay behind debug mode');
+
+  assert.match(normalize, /formatAgentStep/, 'expected formatAgentStep utility');
+  assert.match(normalize, /已完成一个系统步骤/, 'expected unknown steps to use a user-facing fallback');
+  assert.match(normalize, /已创建或更新文件/, 'expected write events to be mapped');
+  assert.match(normalize, /已执行命令/, 'expected exec events to be mapped');
+  assert.match(normalize, /extractCodeBlocks/, 'expected code block extraction');
+  assert.match(normalize, /extractRunResult/, 'expected run result extraction');
+  assert.doesNotMatch(normalize, /未知操作完成/, 'expected normalize layer not to emit unknown-operation copy');
+
+  assert.match(codeCard, /复制/, 'expected code cards to include a copy action');
+  assert.match(runResult, /运行成功|运行失败/, 'expected run result status labels');
+  assert.match(chatCss, /agent-execution-summary/, 'expected execution summary styles');
+  assert.match(chatCss, /code-card/, 'expected code card styles');
+  assert.match(chatCss, /run-result/, 'expected run result styles');
+});
+
+test('assistant generated files render as downloadable cards and images use API preview URLs', async () => {
+  const assistantMessageExists = await exists('src/components/chat/GeneratedFileList.tsx');
+  const normalize = await read('src/utils/agentMessage.ts');
+  const assistantMessage = await read('src/components/chat/AssistantMessageContent.tsx');
+  const chatCss = await read('src/styles/chat.css');
+
+  assert.equal(assistantMessageExists, true, 'expected generated file list component');
+  const generatedFiles = await read('src/components/chat/GeneratedFileList.tsx');
+
+  assert.match(normalize, /rewriteMarkdownAssetUrls/, 'expected markdown image and link URLs to be rewritten');
+  assert.match(normalize, /extractGeneratedFiles/, 'expected local file references to be extracted');
+  assert.match(normalize, /splitMarkdownAssetTarget/, 'expected markdown file paths with spaces or titles to be parsed');
+  assert.doesNotMatch(normalize, /\[\^\)\\s\]\+/, 'expected markdown file paths not to reject spaces');
+  assert.match(normalize, /\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}\/files/, 'expected task-owned file API URLs');
+  assert.match(normalize, /params\.set\('inline', '1'\)/, 'expected image previews to request inline file rendering');
+  assert.match(normalize, /token/, 'expected image preview URLs to carry user auth for img tags');
+
+  assert.match(assistantMessage, /<GeneratedFileList files=\{generatedFiles\}/, 'expected assistant renderer to show generated files');
+  assert.match(generatedFiles, /href=\{file\.downloadUrl\}/, 'expected generated files to be clickable downloads');
+  assert.match(generatedFiles, /download=\{file\.name\}/, 'expected download attribute on generated file links');
+  assert.match(generatedFiles, /<img/, 'expected generated image files to render previews');
+  assert.match(chatCss, /generated-file-list/, 'expected generated file list styles');
+  assert.match(chatCss, /generated-file-preview/, 'expected generated image preview styles');
+});
+
+test('assistant message components rerender when the login token changes', async () => {
+  const app = await read('src/App.tsx');
+  const shell = await read('src/components/assistant/AssistantShell.tsx');
+  const chatPanel = await read('src/components/chat/ChatPanel.tsx');
+  const chatCanvas = await read('src/components/chat/ChatCanvas.tsx');
+
+  assert.match(app, /key=\{`\$\{currentUser\.id\}:\$\{token\}`\}/, 'expected AssistantShell to remount at auth boundaries');
+  assert.match(shell, /renderKey=\{token\}/, 'expected the active auth token to flow into chat rendering');
+  assert.match(chatPanel, /renderKey:\s*string/, 'expected ChatPanel to accept an auth-sensitive render key');
+  assert.match(chatPanel, /<ChatCanvas[\s\S]*renderKey=\{renderKey\}/, 'expected ChatPanel to pass the render key through');
+  assert.match(chatCanvas, /renderKey:\s*string/, 'expected ChatCanvas to accept an auth-sensitive render key');
+  assert.match(chatCanvas, /\[messages,\s*onCopyMessage,\s*onEditMessage,\s*renderKey\]/, 'expected memoized assistant content to recompute after relogin');
 });
 
 test('composer keeps only base input actions without capability toggles', async () => {

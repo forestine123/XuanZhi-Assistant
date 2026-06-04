@@ -2,14 +2,17 @@ import type { SVGProps } from 'react';
 
 type IconName =
   | 'arrow-left'
+  | 'alert-triangle'
   | 'book'
   | 'bulb'
   | 'check'
   | 'check-circle'
+  | 'chevron-down'
   | 'chevron-left-panel'
   | 'chevron-right-panel'
   | 'clock'
   | 'cloud'
+  | 'circle'
   | 'copy'
   | 'database'
   | 'edit'
@@ -44,13 +47,16 @@ type IconProps = SVGProps<SVGSVGElement> & {
 };
 
 const paths: Record<IconName, string[]> = {
+  'alert-triangle': ['M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 'M12 9v4', 'M12 17h.01'],
   'arrow-left': ['M19 12H5', 'M12 19l-7-7 7-7'],
   book: ['M4 19.5A2.5 2.5 0 0 1 6.5 17H20', 'M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z'],
   bulb: ['M9 18h6', 'M10 22h4', 'M12 2a7 7 0 0 0-4 12.75V16h8v-1.25A7 7 0 0 0 12 2z'],
   check: ['M20 6 9 17l-5-5'],
   'check-circle': ['M22 11.08V12a10 10 0 1 1-5.93-9.14', 'M22 4 12 14.01l-3-3'],
+  'chevron-down': ['M6 9l6 6 6-6'],
   'chevron-left-panel': ['M15 18l-6-6 6-6', 'M3 4v16'],
   'chevron-right-panel': ['M9 18l6-6-6-6', 'M21 4v16'],
+  circle: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z'],
   clock: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z', 'M12 6v6l4 2'],
   cloud: ['M17.5 19H7a5 5 0 1 1 1.1-9.88A7 7 0 0 1 21 12a4 4 0 0 1-3.5 7z'],
   copy: ['M8 8h12v12H8z', 'M4 16V4h12'],

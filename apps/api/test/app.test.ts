@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import type { FastifyInstance } from 'fastify';
 import type { AgentEvent, LoginResponse, Message, Task, TaskIntent, XuanzhiAgentProfile } from '@xuanzhi/shared/protocol';
@@ -252,8 +255,13 @@ async function waitForCondition(assertion: () => void | Promise<void>) {
 
 describe('xuanzhi api with OpenClaw Gateway', () => {
   let app: FastifyInstance;
+  let workspaceRoot: string;
+  let previousWorkspaceRoot: string | undefined;
 
   beforeEach(async () => {
+    previousWorkspaceRoot = process.env.OPENCLAW_WORKSPACE_ROOT;
+    workspaceRoot = mkdtempSync(join(tmpdir(), 'xuanzhi-workspace-'));
+    process.env.OPENCLAW_WORKSPACE_ROOT = workspaceRoot;
     gateway.reset();
     app = buildApp();
     await app.ready();
@@ -261,6 +269,12 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
 
   afterEach(async () => {
     await app.close();
+    if (previousWorkspaceRoot === undefined) {
+      delete process.env.OPENCLAW_WORKSPACE_ROOT;
+    } else {
+      process.env.OPENCLAW_WORKSPACE_ROOT = previousWorkspaceRoot;
+    }
+    rmSync(workspaceRoot, { recursive: true, force: true });
   });
 
   it('authenticates test users and returns the user agent', async () => {
@@ -629,5 +643,63 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
       taskId: task.id,
       title: 'Plugin event',
     });
+  });
+
+  it('serves generated workspace files for the owning task and blocks unsafe access', async () => {
+    const userA = await login(app, 'alice');
+    const userB = await login(app, 'bob');
+    const task = await createTask(app, userA.token, 'Generate files');
+    const workspace = userA.agent?.workspace;
+
+    expect(workspace).toBeTruthy();
+    mkdirSync(join(workspace!, 'outputs'), { recursive: true });
+    writeFileSync(join(workspace!, 'outputs', 'report.md'), '# 报告\n\n内容', 'utf8');
+    writeFileSync(join(workspace!, 'outputs', 'chart.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>', 'utf8');
+    writeFileSync(join(workspace!, 'outputs', 'page.html'), '<script>alert(1)</script>', 'utf8');
+
+    const download = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/files?path=${encodeURIComponent('outputs/report.md')}`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+
+    expect(download.statusCode).toBe(200);
+    expect(download.headers['content-disposition']).toContain('attachment');
+    expect(download.body).toContain('# 报告');
+
+    const preview = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/files?path=${encodeURIComponent('outputs/chart.svg')}&inline=1&token=${encodeURIComponent(userA.token)}`,
+    });
+
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['content-type']).toContain('image/svg+xml');
+    expect(preview.headers['content-disposition']).toContain('inline');
+    expect(preview.headers['x-content-type-options']).toBe('nosniff');
+
+    const htmlDownload = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/files?path=${encodeURIComponent('outputs/page.html')}&inline=1`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+
+    expect(htmlDownload.statusCode).toBe(200);
+    expect(htmlDownload.headers['content-disposition']).toContain('attachment');
+
+    const traversal = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/files?path=${encodeURIComponent('../report.md')}`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+
+    expect(traversal.statusCode).toBe(400);
+
+    const crossUser = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/files?path=${encodeURIComponent('outputs/report.md')}`,
+      headers: { authorization: `Bearer ${userB.token}` },
+    });
+
+    expect(crossUser.statusCode).toBe(404);
   });
 });

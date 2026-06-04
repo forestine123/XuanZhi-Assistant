@@ -452,6 +452,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
             <section className="task-chat-column">
               <ChatPanel
                 messages={activeMessages}
+                renderKey={token}
                 onCopyMessage={copyMessage}
                 onEditMessage={editMessage}
               />

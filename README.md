@@ -62,11 +62,16 @@
 ws://127.0.0.1:18789
 ```
 
-即使 OpenClaw 运行在 WSL 中，玄知后端也把它当作 Windows 本机服务访问。后端使用 Gateway token 完成首次配对，并生成设备身份文件用于后续持久连接。
+如果玄知后端和 OpenClaw 都运行在 WSL/Linux 中，后端默认直接访问同一环境的 `127.0.0.1:18789`。后端使用 Gateway token 完成首次配对，并生成设备身份文件用于后续持久连接。
 
 新设备接入：
 
 1. 复制 `apps/api/.env.example` 为 `apps/api/.env`。
+
+   ```bash
+   cp apps/api/.env.example apps/api/.env
+   ```
+
 2. 在 OpenClaw 所在环境执行：
 
    ```bash
@@ -77,7 +82,7 @@ ws://127.0.0.1:18789
 4. 启动后端：
 
    ```bash
-   corepack.cmd pnpm dev:api
+   corepack pnpm dev:api
    ```
 
 5. 保留自动生成的 `apps/api/.openclaw-device.json`。这是当前设备的稳定身份，不要提交到仓库。
@@ -91,40 +96,42 @@ docs/OpenClaw后端连接配置.md
 
 ## 常用命令
 
+以下命令默认在 Linux/WSL shell 中执行。
+
 安装依赖：
 
 ```bash
-corepack.cmd pnpm install
+corepack pnpm install
 ```
 
 启动前后端：
 
 ```bash
-corepack.cmd pnpm dev
+corepack pnpm dev
 ```
 
 只启动后端：
 
 ```bash
-corepack.cmd pnpm dev:api
+corepack pnpm dev:api
 ```
 
 只启动前端：
 
 ```bash
-corepack.cmd pnpm dev:web
+corepack pnpm dev:web
 ```
 
 构建全部 workspace：
 
 ```bash
-corepack.cmd pnpm build
+corepack pnpm build
 ```
 
 运行测试：
 
 ```bash
-corepack.cmd pnpm test
+corepack pnpm test
 ```
 
 ## 关键环境变量

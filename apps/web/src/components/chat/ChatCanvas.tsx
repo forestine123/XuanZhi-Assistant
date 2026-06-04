@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import { Bubble } from '@ant-design/x';
 
 import type { Message } from '../../types/protocol';
-import { MarkdownContent } from './MarkdownContent';
+import { normalizeAgentMessage } from '../../utils/agentMessage';
+import { AssistantMessageContent } from './AssistantMessageContent';
 import { MessageActions } from './MessageActions';
-import { PlanSteps } from './PlanSteps';
 
 const bubbleRoles = {
   assistant: {
@@ -37,31 +37,41 @@ const bubbleRoles = {
 
 type ChatCanvasProps = {
   messages: Message[];
+  renderKey: string;
   onCopyMessage: (content: string) => void;
   onEditMessage: (content: string) => void;
 };
 
-export function ChatCanvas({ messages, onCopyMessage, onEditMessage }: ChatCanvasProps) {
+export function ChatCanvas({ messages, renderKey, onCopyMessage, onEditMessage }: ChatCanvasProps) {
   const bubbleItems = useMemo(
     () =>
-      messages.map((message) => ({
-        key: message.id,
-        role: message.role === 'user' ? 'user' : 'assistant',
-        content:
-          message.role === 'assistant' ? (
-            <div>
-              {message.planSteps && message.planSteps.length > 0 ? (
-                <PlanSteps steps={message.planSteps} />
-              ) : null}
-              <MarkdownContent content={message.content} streaming={message.status === 'streaming'} />
-            </div>
-          ) : (
-            message.content
+      messages.map((message) => {
+        const normalized = message.role === 'assistant' ? normalizeAgentMessage(message) : undefined;
+
+        return {
+          key: message.id,
+          role: message.role === 'user' ? 'user' : 'assistant',
+          content:
+            message.role === 'assistant' ? (
+              <AssistantMessageContent
+                key={`${message.id}:${renderKey}`}
+                message={message}
+                normalized={normalized}
+              />
+            ) : (
+              message.content
+            ),
+          footer: (
+            <MessageActions
+              message={normalized ? { ...message, content: normalized.copyContent } : message}
+              onCopy={onCopyMessage}
+              onEdit={onEditMessage}
+            />
           ),
-        footer: <MessageActions message={message} onCopy={onCopyMessage} onEdit={onEditMessage} />,
-        footerPlacement: message.role === 'user' ? ('outer-end' as const) : ('outer-start' as const),
-      })),
-    [messages, onCopyMessage, onEditMessage],
+          footerPlacement: message.role === 'user' ? ('outer-end' as const) : ('outer-start' as const),
+        };
+      }),
+    [messages, onCopyMessage, onEditMessage, renderKey],
   );
 
   return (

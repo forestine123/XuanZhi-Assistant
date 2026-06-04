@@ -133,7 +133,12 @@ function App() {
           <Spinner size="large" />
         </main>
       ) : currentUser && token ? (
-        <AssistantShell currentUser={currentUser} token={token} onLogout={logout} />
+        <AssistantShell
+          key={`${currentUser.id}:${token}`}
+          currentUser={currentUser}
+          token={token}
+          onLogout={logout}
+        />
       ) : (
         <AuthScreen
           gatewayState={gatewayState}
