@@ -1,46 +1,51 @@
 import type { FastifyInstance } from 'fastify';
 
 import type { AppDependencies } from '../app/dependencies.js';
-import { getOpenClawClient } from '../agents/openclawClient.js';
+import { createXuanzhiWorkspacePath } from '../agents/workspace.js';
 import { requireUserAuth } from '../http/taskGuards.js';
+
+function defaultAgentName(username: string) {
+  return username === 'main' ? 'OpenClaw main' : `${username} 的 OpenClaw Agent`;
+}
+
+function defaultAgentOptions(username: string) {
+  const workspace = createXuanzhiWorkspacePath(username);
+  return username === 'main'
+    ? { workspace, gatewayAgentId: 'main' }
+    : { workspace };
+}
 
 export function registerAuthRoutes(app: FastifyInstance, dependencies: AppDependencies) {
   app.post('/api/auth/register', async (request, reply) => {
-    const body = request.body as { email?: string; name?: string; password?: string };
-    const result = dependencies.services.auth.register(body.email, body.name, body.password);
+    const body = request.body as { username?: string; name?: string; password?: string };
+    const result = dependencies.services.auth.register(body.username, body.name, body.password);
     if ('error' in result) {
       return reply.status(400).send({ message: result.error });
     }
 
-    // Create local agent record immediately
+    const username = result.data.user.username;
     const agent = dependencies.services.agents.createAgent(
       result.data.user.id,
-      result.data.user.name,
+      defaultAgentName(username),
+      defaultAgentOptions(username),
     );
-
-    // Best-effort: create Gateway agent in the background
-    const client = getOpenClawClient();
-    if (client.isConnected()) {
-      const workspace = `xuanzhi-agent-${agent.id}`;
-      client.request<{ ok: true; agentId: string; workspace: string }>('agents.create', {
-        name: agent.name,
-        workspace,
-      }).then((created) => {
-        dependencies.store.updateAgentGatewayInfo(agent.id, created.agentId, created.workspace);
-      }).catch((err) => {
-        console.error('[auth] Gateway agent creation failed (will retry on first task):', err.message);
-      });
-    }
+    result.data.agent = agent;
 
     return reply.status(201).send(result.data);
   });
 
   app.post('/api/auth/login', async (request, reply) => {
-    const body = request.body as { email?: string; password?: string };
-    const login = dependencies.services.auth.login(body.email, body.password);
+    const body = request.body as { username?: string; password?: string };
+    const login = dependencies.services.auth.login(body.username, body.password);
     if (!login) {
-      return reply.status(401).send({ message: '邮箱或密码错误' });
+      return reply.status(401).send({ message: '用户名或密码错误' });
     }
+
+    login.agent = dependencies.services.agents.ensureAgent(
+      login.user.id,
+      defaultAgentName(login.user.username),
+      defaultAgentOptions(login.user.username),
+    );
     return login;
   });
 
@@ -49,7 +54,15 @@ export function registerAuthRoutes(app: FastifyInstance, dependencies: AppDepend
     if (!auth) {
       return;
     }
-    return { user: auth.user };
+    const agent = dependencies.services.agents.ensureAgent(
+      auth.user.id,
+      defaultAgentName(auth.user.username),
+      defaultAgentOptions(auth.user.username),
+    );
+    return {
+      user: auth.user,
+      agent,
+    };
   });
 
   app.post('/api/auth/logout', async (request, reply) => {

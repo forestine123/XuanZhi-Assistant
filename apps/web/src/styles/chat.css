@@ -551,3 +551,519 @@
   width: 100%;
   justify-self: auto;
 }
+
+/* ── Plan steps ── */
+
+@keyframes plan-step-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.plan-steps {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+
+.plan-step + .plan-step {
+  border-top: 1px solid #f3f4f6;
+}
+
+/* ── Agent Registration Wizard ── */
+
+.agent-wizard-page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 40px 20px 60px;
+  overflow-y: auto;
+}
+
+.agent-wizard-inner {
+  width: min(680px, 100%);
+}
+
+.agent-wizard-header {
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.agent-wizard-header h1 {
+  margin: 0 0 8px;
+  color: #18181b;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.agent-wizard-steps {
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.agent-wizard-step-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #a1a1aa;
+  transition: color 0.2s;
+}
+
+.agent-wizard-step-dot.active {
+  color: #2563eb;
+}
+
+.agent-wizard-step-dot.done {
+  color: #22c55e;
+}
+
+.agent-wizard-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.agent-wizard-step-dot.active .agent-wizard-step-num {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.agent-wizard-step-dot.done .agent-wizard-step-num {
+  background: #22c55e;
+  color: #fff;
+  border-color: #22c55e;
+}
+
+.agent-wizard-step-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agent-wizard-body {
+  min-height: 320px;
+}
+
+.agent-wizard-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wizard-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.wizard-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #27272a;
+}
+
+.wizard-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  background: #fff;
+  color: #18181b;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.wizard-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.wizard-select {
+  appearance: none;
+  cursor: pointer;
+}
+
+.wizard-choice-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wizard-choice-padded {
+  margin-top: 10px;
+}
+
+.wizard-choice-btn {
+  padding: 8px 16px;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  background: #fff;
+  color: #52525b;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wizard-choice-btn:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.wizard-choice-btn.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.wizard-section {
+  padding-top: 4px;
+}
+
+.wizard-section strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wizard-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.wizard-chip {
+  padding: 6px 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  background: #fff;
+  color: #52525b;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wizard-chip:hover {
+  border-color: #d4d4d8;
+  background: #fafafa;
+}
+
+.wizard-chip.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.agent-wizard-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.wizard-footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Wizard Summary (confirm step) ── */
+
+.wizard-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wizard-summary-group {
+  padding: 16px;
+  border: 1px solid #f3f4f6;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.wizard-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.wizard-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wizard-summary-label {
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.wizard-summary-item span:last-child {
+  font-size: 14px;
+  color: #18181b;
+  font-weight: 500;
+}
+
+.wizard-summary-code {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  font-size: 13px;
+  color: #52525b;
+}
+
+/* ── Agent Profile Panel (settings) ── */
+
+.agent-profile-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profile-section {
+  padding: 16px;
+  border: 1px solid #f3f4f6;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.profile-section h4 {
+  margin-bottom: 12px;
+  color: #18181b;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.profile-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.profile-field + .profile-field {
+  border-top: 1px solid #f3f4f6;
+}
+
+.profile-field-label {
+  font-size: 13px;
+  color: #71717a;
+}
+
+.profile-field-value {
+  font-size: 13px;
+  color: #18181b;
+  font-weight: 500;
+}
+
+.profile-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.profile-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 11px;
+  color: #52525b;
+}
+
+/* ── Sidebar: only admin can create new agents ── */
+.new-agent-button-admin {
+  opacity: 1;
+}
+.new-agent-button-hidden {
+  display: none;
+}
+
+/* Team admin workspace */
+.workspace-body.is-team {
+  height: 100%;
+  overflow: auto;
+  background: #fbfcfe;
+}
+
+.team-admin-page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 42px 32px 56px;
+}
+
+.team-admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.team-admin-header h1 {
+  margin: 4px 0 0;
+  color: #18181b;
+  font-size: 26px;
+  font-weight: 720;
+  letter-spacing: 0;
+}
+
+.team-admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.team-admin-metric {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.team-admin-metric span {
+  color: #71717a;
+  font-size: 12px;
+}
+
+.team-admin-metric strong {
+  color: #18181b;
+  font-size: 22px;
+  font-weight: 720;
+}
+
+.team-admin-table {
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.team-admin-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) 90px minmax(160px, 1fr) minmax(220px, 1.4fr) 86px;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 16px;
+  border-top: 1px solid #f1f5f9;
+  color: #27272a;
+  font-size: 13px;
+}
+
+.team-admin-row.is-head {
+  min-height: 42px;
+  border-top: 0;
+  background: #f8fafc;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.team-admin-user {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.team-admin-user strong,
+.team-admin-user small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-admin-user small {
+  color: #71717a;
+}
+
+.team-admin-avatar {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 700;
+}
+
+.team-admin-path {
+  overflow: hidden;
+  color: #52525b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-admin-status {
+  display: inline-flex;
+  min-width: 54px;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f4f4f5;
+  color: #52525b;
+  font-size: 12px;
+}
+
+.team-admin-status.is-running {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.team-admin-status.is-error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+@media (max-width: 920px) {
+  .team-admin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .team-admin-row {
+    grid-template-columns: minmax(160px, 1fr) 82px minmax(150px, 1fr);
+  }
+
+  .team-admin-row > span:nth-child(4),
+  .team-admin-row > span:nth-child(5) {
+    display: none;
+  }
+}

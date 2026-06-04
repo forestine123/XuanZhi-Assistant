@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { promptDrafts } from '../../data/assistantData';
-import type { AgentTemplate } from '../../data/assistantData';
+import * as agentApi from '../../services/agentApi';
 import * as approvalApi from '../../services/approvalApi';
 import * as messageApi from '../../services/messageApi';
 import { subscribeTaskStream } from '../../services/streamClient';
@@ -11,7 +11,7 @@ import {
   upsertById,
   upsertTaskRecordItem,
 } from '../../stores/taskStore';
-import type { Approval, Message, StreamEvent, Task, User } from '../../types/protocol';
+import type { Agent, AgentEvent, Approval, Message, StreamEvent, Task, User } from '../../types/protocol';
 import { ApprovalCard } from '../chat/ApprovalCard';
 import { ChatComposer } from '../chat/ChatComposer';
 import { ChatHome } from '../chat/ChatHome';
@@ -21,6 +21,7 @@ import { toast } from '../ui';
 import { AgentCreatePage } from './AgentCreatePage';
 import { Sidebar } from './Sidebar';
 import type { SidebarAgentItem, WorkspaceKey } from './Sidebar';
+import { TeamAdminPage } from './TeamAdminPage';
 import { WorkspaceHeader } from './WorkspaceHeader';
 
 type AssistantShellProps = {
@@ -34,33 +35,49 @@ function getStreamEventTaskId(event: StreamEvent) {
 }
 
 const DEFAULT_AGENT_ID = 'agent-default';
+const setupFlagPrefix = 'xuanzhi.agentSetup.pending.';
 const activeTaskStatuses = new Set<Task['status']>(['created', 'planning', 'running', 'waiting_approval']);
 
-type LocalAgent = Omit<SidebarAgentItem, 'isRunning'>;
-type WorkspaceView = 'home' | 'chat' | 'agent-picker' | 'file';
-
-const defaultAgent: LocalAgent = {
-  id: DEFAULT_AGENT_ID,
-  name: '玄知助手',
-  description: '心直口快、赛博感、朋友式吐槽',
-  avatar: 'thunderbolt',
-  tone: 'default',
-};
+type WorkspaceView = 'home' | 'chat' | 'agent-picker' | 'file' | 'team';
 
 function isTaskStatusActive(status: Task['status']) {
   return activeTaskStatuses.has(status);
 }
 
+function getTaskAgentId(task: Task, taskAgentMap: Record<string, string>, fallbackAgentId: string) {
+  return task.agentId ?? taskAgentMap[task.id] ?? fallbackAgentId;
+}
+
+function agentToSidebarItem(agent: Agent, tasks: Task[], taskAgentMap: Record<string, string>): SidebarAgentItem {
+  const agentDisplayName = agent.profile?.agentName || agent.name;
+  const roleDesc = agent.profile?.identity?.role || '';
+  return {
+    id: agent.id,
+    name: agentDisplayName,
+    description: roleDesc,
+    avatar: agent.emoji ?? '🤖',
+    tone: 'default',
+    isRunning: tasks.some(
+      (task) => getTaskAgentId(task, taskAgentMap, '') === agent.id && isTaskStatusActive(task.status),
+    ),
+  };
+}
+
 export function AssistantShell({ currentUser, token, onLogout }: AssistantShellProps) {
+  const setupFlagKey = `${setupFlagPrefix}${currentUser.id}`;
   const [activeTaskId, setActiveTaskId] = useState<string>();
   const [activeAgentId, setActiveAgentId] = useState(DEFAULT_AGENT_ID);
-  const [localAgents, setLocalAgents] = useState<LocalAgent[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [pendingInitialSetup, setPendingInitialSetup] = useState(() => (
+    window.localStorage.getItem(setupFlagKey) === '1'
+  ));
   const [taskAgentMap, setTaskAgentMap] = useState<Record<string, string>>({});
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('home');
   const [inputValue, setInputValue] = useState('');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [messagesByTask, setMessagesByTask] = useState<Record<string, Message[]>>({});
   const [approvalsByTask, setApprovalsByTask] = useState<Record<string, Approval[]>>({});
+  const [_eventsByTask, setEventsByTask] = useState<Record<string, AgentEvent[]>>({});
   const [approvingId, setApprovingId] = useState<string>();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // 同一时间只订阅当前任务的 SSE，切换任务或登出时立即关闭，避免旧任务事件写入新视图。
@@ -81,6 +98,10 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
       case 'message.created':
       case 'message.updated':
         setMessagesByTask((current) => upsertTaskRecordItem(current, event.data.taskId, event.data));
+        break;
+      case 'agent.event.created':
+      case 'agent.event.updated':
+        setEventsByTask((current) => upsertTaskRecordItem(current, event.data.taskId, event.data));
         break;
       case 'approval.requested':
       case 'approval.updated':
@@ -110,7 +131,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
       setActiveTaskId(taskId);
       setWorkspaceView('chat');
       try {
-        // 先加载任务快照再建立当前任务 SSE；创建新任务时会先进入这里，再发送首条消息触发 Mock Agent。
+        // 先加载任务快照再建立当前任务 SSE；创建新任务时会先进入这里，再发送首条消息触发 OpenClaw Agent。
         await loadTaskSnapshot(taskId);
         if (streamGeneration !== streamGenerationRef.current) {
           return;
@@ -149,6 +170,19 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
   useEffect(() => {
     let cancelled = false;
 
+    // Fetch agents from backend
+    agentApi
+      .listAgents()
+      .then((backendAgents) => {
+        if (!cancelled) {
+          setAgents(backendAgents);
+          if (backendAgents.length > 0 && activeAgentId === DEFAULT_AGENT_ID) {
+            setActiveAgentId(backendAgents[0].id);
+          }
+        }
+      })
+      .catch(() => { /* agents not critical for initial render */ });
+
     taskApi
       .listTasks()
       .then(async (nextTasks) => {
@@ -157,7 +191,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
           setTaskAgentMap((current) => {
             const next = { ...current };
             nextTasks.forEach((task) => {
-              next[task.id] ??= DEFAULT_AGENT_ID;
+              next[task.id] = task.agentId ?? next[task.id] ?? agents[0]?.id ?? DEFAULT_AGENT_ID;
             });
             return next;
           });
@@ -173,22 +207,14 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
     };
   }, [closeStream]);
 
-  const allAgents = useMemo(() => [defaultAgent, ...localAgents], [localAgents]);
-
   const activeAgentTasks = useMemo(
-    () => tasks.filter((task) => (taskAgentMap[task.id] ?? DEFAULT_AGENT_ID) === activeAgentId),
+    () => tasks.filter((task) => getTaskAgentId(task, taskAgentMap, activeAgentId) === activeAgentId),
     [activeAgentId, taskAgentMap, tasks],
   );
 
   const agentItems = useMemo<SidebarAgentItem[]>(
-    () =>
-      allAgents.map((agent) => ({
-        ...agent,
-        isRunning: tasks.some(
-          (task) => (taskAgentMap[task.id] ?? DEFAULT_AGENT_ID) === agent.id && isTaskStatusActive(task.status),
-        ),
-      })),
-    [allAgents, taskAgentMap, tasks],
+    () => agents.map((agent) => agentToSidebarItem(agent, tasks, taskAgentMap)),
+    [agents, taskAgentMap, tasks],
   );
 
   const submitMessage = useCallback(
@@ -206,6 +232,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
           activeTaskId && activeAgentTasks.some((item) => item.id === activeTaskId)
             ? activeAgentTasks.find((item) => item.id === activeTaskId)
             : await taskApi.createTask({
+                agentId: activeAgentId,
                 title: question.slice(0, 28),
                 userInput: question,
                 intent: 'meeting',
@@ -218,18 +245,17 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
         setTasks((current) => upsertById(current, task));
         setTaskAgentMap((current) => ({
           ...current,
-          [task.id]: current[task.id] ?? activeAgentId,
+          [task.id]: task.agentId ?? current[task.id] ?? activeAgentId,
         }));
 
         if (task.id !== activeTaskId) {
-          // 新任务需要先打开详情并建立 SSE，再发送首条消息；Mock Agent 会在消息写入后立刻推送事件。
+          // 新任务需要先打开详情并建立 SSE，再发送首条消息；OpenClaw Agent 会通过后端持续推送事件。
           await openTask(task.id);
         }
 
         const createdMessage = await messageApi.sendTaskMessage(task.id, question);
         setMessagesByTask((current) => upsertTaskRecordItem(current, task.id, createdMessage));
-        // Mock Agent 目前会同步生成事件、产物和审批；这里主动刷新一次快照，
-        // 避免 SSE 连接尚未完全建立时漏掉首轮进度和审批。
+        // OpenClaw Gateway 的首轮事件可能早于浏览器完成 SSE 建连；这里主动刷新一次快照。
         await loadTaskSnapshot(task.id);
         setWorkspaceView('chat');
       } catch (error) {
@@ -261,11 +287,19 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
         return;
       }
 
-      if (workspaceView === 'file') {
+      if (workspace === 'team' && currentUser.role === 'admin') {
+        closeStream();
+        setActiveTaskId(undefined);
+        setInputValue('');
+        setWorkspaceView('team');
+        return;
+      }
+
+      if (workspaceView === 'file' || workspaceView === 'team') {
         setWorkspaceView('home');
       }
     },
-    [showFileSpace, workspaceView],
+    [closeStream, currentUser.role, showFileSpace, workspaceView],
   );
 
   const showAgentCreatePage = useCallback(() => {
@@ -286,21 +320,21 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
     [closeStream],
   );
 
-  const createAgentFromTemplate = useCallback((template: AgentTemplate) => {
-    const nextAgent: LocalAgent = {
-      id: `agent-${template.key}-${Date.now()}`,
-      name: template.name,
-      description: template.description,
-      avatar: template.avatar,
-      tone: template.tone,
-    };
-
-    setLocalAgents((current) => [...current, nextAgent]);
-    setActiveAgentId(nextAgent.id);
-    setActiveTaskId(undefined);
-    setInputValue('');
-    setWorkspaceView('home');
-  }, []);
+  const handleAgentCreated = useCallback(async (agentId: string) => {
+    // Refresh agent list from backend
+    try {
+      const backendAgents = await agentApi.listAgents();
+      window.localStorage.removeItem(setupFlagKey);
+      setPendingInitialSetup(false);
+      setAgents(backendAgents);
+      setActiveAgentId(agentId);
+      setActiveTaskId(undefined);
+      setInputValue('');
+      setWorkspaceView('home');
+    } catch {
+      setWorkspaceView('home');
+    }
+  }, [setupFlagKey]);
 
   const selectPrompt = useCallback((key: string) => {
     setInputValue(promptDrafts[key] ?? '');
@@ -348,8 +382,9 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
     setTasks([]);
     setMessagesByTask({});
     setApprovalsByTask({});
+    setEventsByTask({});
     setTaskAgentMap({});
-    setLocalAgents([]);
+    setAgents([]);
     setActiveAgentId(DEFAULT_AGENT_ID);
     setActiveTaskId(undefined);
     setWorkspaceView('home');
@@ -357,13 +392,16 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
   }, [closeStream, onLogout]);
 
   const activeTask = activeAgentTasks.find((task) => task.id === activeTaskId);
+  const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
+  const needsAgentSetup = Boolean(pendingInitialSetup && activeAgent && !activeAgent.profile);
   const activeMessages = activeTaskId ? messagesByTask[activeTaskId] ?? [] : [];
   const activeApprovals = activeTaskId ? approvalsByTask[activeTaskId] ?? [] : [];
   const activePendingApprovals = activeApprovals.filter((approval) => approval.status === 'pending');
   const isChatting = Boolean(activeTask);
-  const isAgentPicker = workspaceView === 'agent-picker';
+  const isAgentPicker = workspaceView === 'agent-picker' || needsAgentSetup;
   const isFileSpace = workspaceView === 'file';
-  const activeWorkspace: WorkspaceKey = isFileSpace ? 'file' : 'chat';
+  const isTeamSpace = workspaceView === 'team';
+  const activeWorkspace: WorkspaceKey = isTeamSpace ? 'team' : isFileSpace ? 'file' : 'chat';
 
   return (
     <main className={`assistant-shell ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
@@ -383,8 +421,8 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
         onLogout={handleLogout}
       />
 
-      <section className={`assistant-main ${isFileSpace ? 'is-file-space' : isChatting ? 'is-chatting' : 'is-home'}`}>
-        {isFileSpace ? null : (
+      <section className={`assistant-main ${isFileSpace ? 'is-file-space' : isTeamSpace ? 'is-team-space' : isChatting ? 'is-chatting' : 'is-home'}`}>
+        {isFileSpace || isTeamSpace ? null : (
           <WorkspaceHeader
             sidebarCollapsed={sidebarCollapsed}
             task={activeTask}
@@ -393,11 +431,23 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
           />
         )}
 
-        <div className={`workspace-body ${isFileSpace ? 'is-file' : isChatting ? 'is-task' : ''}`}>
+        <div className={`workspace-body ${isFileSpace ? 'is-file' : isTeamSpace ? 'is-team' : isChatting ? 'is-task' : ''}`}>
           {isFileSpace ? (
             <FileSpacePage />
+          ) : isTeamSpace ? (
+            <TeamAdminPage currentUser={currentUser} />
           ) : isAgentPicker ? (
-            <AgentCreatePage onSelectTemplate={createAgentFromTemplate} />
+            <AgentCreatePage
+                currentUserId={currentUser.id}
+                isAdmin={currentUser.role === 'admin'}
+                existingAgent={activeAgent}
+                onCreated={handleAgentCreated}
+                onCancel={() => {
+                  if (!needsAgentSetup) {
+                    setWorkspaceView('home');
+                  }
+                }}
+              />
           ) : isChatting && activeTask ? (
             <section className="task-chat-column">
               <ChatPanel
@@ -416,7 +466,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
           )}
         </div>
 
-        {isChatting && !isFileSpace ? (
+        {isChatting && !isFileSpace && !isTeamSpace ? (
           <footer className="composer-area">
             <div className="composer-stack">
               {activePendingApprovals.length > 0 ? (

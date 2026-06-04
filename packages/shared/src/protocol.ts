@@ -1,11 +1,10 @@
-// 前后端和插件文档共用的协议单一来源。userId 在业务对象上冗余保存，
-// 是为了让权限校验、列表查询和插件上报归属反查都不依赖前端参数。
 export type UserRole = 'user' | 'admin';
 
 export type User = {
   id: string;
+  username: string;
   name: string;
-  email: string;
+  email?: string;
   role: UserRole;
   createdAt: string;
 };
@@ -24,9 +23,17 @@ export type TaskIntent = 'meeting' | 'business' | 'coding' | 'qa' | 'general';
 
 export type MessageStatus = 'streaming' | 'completed' | 'failed';
 
+export type MessagePlanStep = {
+  id: string;
+  text: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+};
+
 export type Task = {
   id: string;
   userId: string;
+  agentId?: string;
+  sessionKey?: string;
   title: string;
   userInput: string;
   intent: TaskIntent;
@@ -42,6 +49,8 @@ export type Message = {
   role: 'user' | 'assistant' | 'system';
   content: string;
   status?: MessageStatus;
+  planSteps?: MessagePlanStep[];
+  planFooter?: string;
   createdAt: string;
 };
 
@@ -94,6 +103,7 @@ export type StreamEvent =
   | { type: 'message.created'; data: Message }
   | { type: 'message.updated'; data: Message }
   | { type: 'agent.event.created'; data: AgentEvent }
+  | { type: 'agent.event.updated'; data: AgentEvent }
   | { type: 'artifact.created'; data: Artifact }
   | { type: 'approval.requested'; data: Approval }
   | { type: 'approval.updated'; data: Approval };
@@ -101,26 +111,92 @@ export type StreamEvent =
 export type LoginResponse = {
   token: string;
   user: User;
+  agent?: Agent;
 };
 
 export type RegisterInput = {
-  email: string;
-  name: string;
+  username: string;
+  name?: string;
+  password: string;
+};
+
+export type LoginInput = {
+  username: string;
   password: string;
 };
 
 export type AgentStatus = 'offline' | 'idle' | 'running' | 'error';
 
+export type AgentAccessRole = 'admin' | 'user';
+
+export type AgentIdentity = {
+  displayName: string;
+  role: string;
+  organization?: string;
+  researchFields?: string[];
+  experience?: 'beginner' | 'intermediate' | 'expert';
+};
+
+export type AgentRequirements = {
+  tone?: '严谨学术' | '工程务实' | '简洁高效';
+  depth?: '快速概览' | '标准分析' | '深度研究';
+  language?: 'zh-CN' | 'en';
+  autoMode?: boolean;
+  expertDomains?: string[];
+  notificationPrefs?: {
+    wechat?: boolean;
+    email?: boolean;
+  };
+};
+
+export type XuanzhiAgentProfile = {
+  version: 1;
+  agentName: string;
+  identity: AgentIdentity;
+  requirements: AgentRequirements;
+  access: {
+    role: AgentAccessRole;
+    isolatedWorkspace: boolean;
+  };
+};
+
 export type Agent = {
   id: string;
   userId: string;
   name: string;
-  /** OpenClaw Gateway agent ID (returned by agents.create RPC) */
   gatewayAgentId: string | null;
-  /** Agent workspace directory on the Gateway host */
   workspace: string;
   sessionKey: string;
   status: AgentStatus;
+  profile?: XuanzhiAgentProfile | null;
+  emoji?: string;
+  model?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SessionInfo = {
+  sessionId: string;
+  sessionKey: string;
+  agentId?: string;
+  title: string;
+  status: string;
+  totalTokens?: number;
+  estimatedCostUsd?: number;
+  runtimeMs?: number;
+  modelProvider?: string;
+  model?: string;
+  startedAt?: string;
+  endedAt?: string;
+  parentSessionKey?: string;
+  childSessions?: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SessionMessage = {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  createdAt: string;
 };
