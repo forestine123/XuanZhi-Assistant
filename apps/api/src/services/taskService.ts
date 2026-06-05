@@ -1,4 +1,4 @@
-import type { Agent, Task, TaskIntent, TaskStatus } from '@xuanzhi/shared/protocol';
+﻿import type { Agent, Task, TaskIntent, TaskStatus } from '@xuanzhi/shared/protocol';
 
 import type { MemoryStore } from '../repositories/memoryStore.js';
 import type { StreamHub } from '../realtime/streamHub.js';
@@ -7,6 +7,10 @@ import { listOpenClawAgents, listOpenClawSessions, type OpenClawSessionRow } fro
 function titleFromInput(userInput: string) {
   const title = userInput.trim().replace(/\s+/g, ' ').slice(0, 28);
   return title || '新任务';
+}
+
+function stripInternalSessionLabel(title: string) {
+  return title.replace(/\s\([a-zA-Z0-9-]{8}\)$/, '');
 }
 
 export function createTaskService(store: MemoryStore, stream: StreamHub) {
@@ -61,13 +65,14 @@ export function createTaskService(store: MemoryStore, stream: StreamHub) {
     const fallbackTitle = key.endsWith(':main')
       ? `${agent.name} 的主对话`
       : `OpenClaw 会话 ${session.sessionKey?.slice(0, 8) || session.id?.slice(0, 8) || key.split(':').at(-1) || ''}`.trim();
-    const title =
+    const title = stripInternalSessionLabel(
       session.displayName?.trim()
       || session.label?.trim()
       || session.title?.trim()
       || session.name?.trim()
       || fallbackTitle
-      || 'OpenClaw session';
+      || 'OpenClaw session',
+    );
     return {
       id: taskIdFromSession(session, agent),
       userId: agent.userId,
@@ -109,6 +114,31 @@ export function createTaskService(store: MemoryStore, stream: StreamHub) {
     }
   }
 
+  function mergeLocalAndSessionTask(localTask: Task | undefined, sessionTask: Task | undefined): Task {
+    if (!localTask && sessionTask) return sessionTask;
+    if (!sessionTask && localTask) return localTask;
+    if (!localTask || !sessionTask) {
+      throw new Error('Cannot merge empty task records');
+    }
+
+    const sessionIsNewer = sessionTask.updatedAt.localeCompare(localTask.updatedAt) > 0;
+    const shouldUseSessionTitle =
+      sessionIsNewer
+      && !localTask.title.trim();
+    const title = shouldUseSessionTitle ? sessionTask.title : localTask.title;
+
+    return {
+      ...localTask,
+      agentId: localTask.agentId ?? sessionTask.agentId,
+      sessionKey: sessionTask.sessionKey ?? localTask.sessionKey,
+      title,
+      userInput: localTask.userInput === localTask.title ? title : localTask.userInput,
+      status: localTask.status === 'running' ? localTask.status : sessionTask.status,
+      createdAt: localTask.createdAt || sessionTask.createdAt,
+      updatedAt: sessionIsNewer ? sessionTask.updatedAt : localTask.updatedAt,
+    };
+  }
+
   return {
     createTask(input: { userId: string; agentId?: string; title?: string; userInput: string; intent: TaskIntent }) {
       const task = store.createTask({
@@ -134,8 +164,11 @@ export function createTaskService(store: MemoryStore, stream: StreamHub) {
       const sessionTasks = await listSessionTasksForUser(userId);
       sessionTasks.forEach((task) => store.upsertTask(task));
       const merged = new Map<string, Task>();
-      [...sessionTasks, ...localTasks].forEach((task) => {
-        merged.set(task.id, { ...merged.get(task.id), ...task });
+      localTasks.forEach((task) => {
+        merged.set(task.id, mergeLocalAndSessionTask(task, undefined));
+      });
+      sessionTasks.forEach((task) => {
+        merged.set(task.id, mergeLocalAndSessionTask(merged.get(task.id), task));
       });
       return [...merged.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     },
