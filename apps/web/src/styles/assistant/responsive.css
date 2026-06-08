@@ -25,6 +25,8 @@
 @media (max-width: 720px) {
   .assistant-shell,
   .assistant-shell.is-sidebar-collapsed {
+    --chat-inline-padding: 14px;
+
     grid-template-columns: 1fr;
     height: auto;
     min-height: 100vh;
@@ -60,23 +62,13 @@
     padding-left: 150px;
   }
 
-  .workspace-body,
-  .composer-area {
+  .workspace-body {
     padding-right: 14px;
     padding-left: 14px;
   }
 
   .workspace-body.is-task {
     overflow: auto;
-  }
-
-  .task-workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .task-artifact-panel {
-    position: static;
-    max-height: none;
   }
 
   .workspace-title span {

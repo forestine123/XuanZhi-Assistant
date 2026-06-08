@@ -35,9 +35,8 @@ test('assistant shell exposes the QClaw-style workspace structure', async () => 
   assert.match(sidebar, /nav-rail-bottom/, 'expected the bottom settings entry to remain');
   assert.match(sidebar, /nav-rail-icon/, 'expected the bottom settings icon to remain');
   assert.doesNotMatch(sidebar, /<BrandLockup \/>/, 'expected the sidebar brand lockup to be removed');
-  assert.match(header, /collapsed-new-chat-wrap/, 'expected collapsed sidebar new-chat trigger markup');
-  assert.match(assistantCss, /\.collapsed-new-chat-wrap/, 'expected collapsed sidebar new-chat trigger styles');
-  assert.match(assistantCss, /\.assistant-shell\.is-sidebar-collapsed \.collapsed-new-chat-wrap/, 'expected collapsed state to reveal the new-chat trigger');
+  assert.match(sidebar, /collapsed-toolbar-button/, 'expected collapsed sidebar toolbar buttons');
+  assert.match(assistantCss, /\.assistant-sidebar\.is-rail-only \.collapsed-toolbar-button/, 'expected collapsed state to reveal rail toolbar actions');
   assert.match(assistantCss, /--nav-rail-width:\s*68px/, 'expected a fixed narrow rail token');
   assert.match(assistantCss, /grid-template-columns:\s*var\(--nav-rail-width\) var\(--agent-sidebar-width\)/, 'expected rail + agent list columns');
 });
@@ -102,7 +101,8 @@ test('task execution workspace is removed from the basic chat surface', async ()
   const chatCss = await read('src/styles/chat.css');
 
   assert.doesNotMatch(shell, /AgentWorkspace/, 'expected the right task workspace component to be removed from the shell');
-  assert.doesNotMatch(shell, /workspaceCollapsed|toggleWorkspace|task-workspace/, 'expected right workspace collapse state to be removed');
+  assert.doesNotMatch(shell, /workspaceCollapsed|toggleWorkspace|task-workspace|TaskArtifactPanel|has-artifacts/, 'expected right workspace and artifact panel state to be removed');
+  assert.match(shell, /className="task-chat-column"/, 'expected the active chat to render as a single chat column');
   assert.doesNotMatch(header, /workspaceCollapsed|onToggleWorkspace|workspace-toggle/, 'expected the header not to expose a workspace toggle');
   assert.doesNotMatch(header, /pendingApprovalCount|pendingApprovalSummaries|pending-approval-button/, 'expected global header approval entry to be removed');
   assert.doesNotMatch(shell, /pendingApprovalSummaries|pendingApprovalCount/, 'expected approval prompts to stay scoped to the active chat');
@@ -119,6 +119,36 @@ test('task execution workspace is removed from the basic chat surface', async ()
   assert.doesNotMatch(chatCss, /inline-task-activity|inline-final-artifacts/, 'expected inline progress and artifact chat styles to be deleted');
   assert.match(chatCss, /composer-approval-stack/, 'expected composer approval prompt styles');
   assert.doesNotMatch(assistantCss, /agent-progress|agent-tool-call|agent-workspace|task-workspace|artifact-panel|artifact-viewer/, 'expected unused workspace, progress, and artifact styles to be deleted');
+});
+
+test('chat messages and composer share one horizontal alignment contract', async () => {
+  const shell = await read('src/components/assistant/AssistantShell.tsx');
+  const assistantCss = await readAssistantStyles();
+  const chatCss = await read('src/styles/chat.css');
+
+  assert.doesNotMatch(shell, /TaskArtifactPanel|task-workspace|has-artifacts/, 'expected no right artifact panel or two-column task workspace');
+  assert.match(shell, /className="task-chat-column"/, 'expected chat content to stay in the single aligned chat column');
+  assert.match(assistantCss, /--chat-inline-padding:\s*24px/, 'expected chat body and composer to share an inline padding token');
+  assert.match(
+    assistantCss,
+    /\.workspace-body\.is-task\s*\{[\s\S]*padding:\s*0\s+var\(--chat-inline-padding\)/,
+    'expected task message body to use the shared inline padding',
+  );
+  assert.match(
+    chatCss,
+    /\.assistant-main\.is-chatting \.composer-area\s*\{[\s\S]*padding:\s*12px\s+var\(--chat-inline-padding\)\s+22px/,
+    'expected composer area to use the same shared inline padding as the message body',
+  );
+  assert.match(
+    chatCss,
+    /\.chat-canvas\s*\{[\s\S]*width:\s*100%[\s\S]*margin:\s*0/,
+    'expected message list to fill the aligned chat column instead of recentering independently',
+  );
+  assert.match(
+    chatCss,
+    /\.composer-stack\s*\{[\s\S]*width:\s*min\(var\(--chat-surface-width\),\s*100%\)[\s\S]*margin:\s*0 auto/,
+    'expected composer stack to use the same chat surface width as the chat column',
+  );
 });
 
 test('task streams are isolated when switching conversations', async () => {
@@ -340,10 +370,10 @@ test('file workspace renders the screenshot-style file space', async () => {
 
   assert.match(filePage, /file-space-page/, 'expected a dedicated file page surface');
   assert.match(filePage, /搜索文件名/, 'expected the top file search input');
-  assert.match(filePage, /全部Agent/, 'expected the agent filter control');
-  assert.match(filePage, /1 个文件/, 'expected the file count');
-  assert.match(filePage, /请提供你的出生信息:/, 'expected grouped file source title');
-  assert.match(filePage, /task-summary_20260527_1525\.md/, 'expected the mock markdown file row');
+  assert.match(filePage, /全部 Agent/, 'expected the agent filter control');
+  assert.match(filePage, /\{visibleFiles\.length\} 个文件/, 'expected the dynamic file count');
+  assert.match(filePage, /function groupTitle\(file: FileAsset\)/, 'expected grouped file source titles');
+  assert.match(filePage, /<FileTypeMark file=\{file\}/, 'expected file rows to render typed file marks');
   assert.match(filePage, /file-view-toggle/, 'expected list/grid view controls');
 
   assert.match(assistantCss, /file-space-page/, 'expected file page layout styles');

@@ -21,7 +21,6 @@ import { ChatHome } from '../chat/ChatHome';
 import { ChatPanel } from '../chat/ChatPanel';
 import { FilePreviewModal } from '../files/FilePreviewModal';
 import { FileSpacePage } from '../files/FileSpacePage';
-import { TaskArtifactPanel } from '../files/TaskArtifactPanel';
 import { toast } from '../ui';
 import { Icon } from '../ui/icons';
 import { AgentCreatePage } from './AgentCreatePage';
@@ -676,20 +675,13 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
                 }}
               />
           ) : isChatting && activeTask ? (
-            <section className={`task-workspace ${activeFiles.length > 0 ? 'has-artifacts' : ''}`}>
-              <section className="task-chat-column">
-                <ChatPanel
-                  files={activeFiles}
-                  messages={activeMessages}
-                  renderKey={token}
-                  onCopyMessage={copyMessage}
-                  onEditMessage={editMessage}
-                />
-              </section>
-              <TaskArtifactPanel
+            <section className="task-chat-column">
+              <ChatPanel
                 files={activeFiles}
-                onPreview={setPreviewFile}
-                onUseAsContext={useFileAsContext}
+                messages={activeMessages}
+                renderKey={token}
+                onCopyMessage={copyMessage}
+                onEditMessage={editMessage}
               />
             </section>
           ) : (

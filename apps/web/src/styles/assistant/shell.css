@@ -4,6 +4,7 @@
   --sidebar-motion-duration: 270ms;
   --sidebar-motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --chat-surface-width: 952px;
+  --chat-inline-padding: 24px;
 
   display: grid;
   grid-template-columns: calc(var(--nav-rail-width) + var(--agent-sidebar-width)) minmax(0, 1fr);
@@ -97,7 +98,7 @@
 
 .workspace-body.is-task {
   overflow: auto;
-  padding-right: 16px;
+  padding: 0 var(--chat-inline-padding);
 }
 
 .workspace-body.is-file {
@@ -107,16 +108,10 @@
   overflow: hidden;
 }
 
-.task-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 292px;
-  gap: 18px;
-  min-height: 100%;
-}
-
 .task-chat-column {
-  width: 100%;
+  width: min(var(--chat-surface-width), 100%);
   min-width: 0;
-  min-height: 0;
+  min-height: 100%;
+  margin: 0 auto;
   overflow: visible;
 }

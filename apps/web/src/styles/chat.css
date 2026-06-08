@@ -184,9 +184,9 @@
 }
 
 .chat-canvas {
-  width: min(var(--chat-surface-width), 100%);
+  width: 100%;
   min-height: 100%;
-  margin: 0 auto;
+  margin: 0;
   padding: 32px 0 12px;
 }
 
@@ -1167,7 +1167,7 @@
 
 .assistant-main.is-chatting .composer-area {
   display: block;
-  padding: 12px 24px 22px;
+  padding: 12px var(--chat-inline-padding) 22px;
 }
 
 .assistant-main.is-chatting .composer-area::after {
