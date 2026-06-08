@@ -24,6 +24,7 @@ export type {
   LoginResponse,
   Message,
   MessagePlanStep,
+  MessageToolCall,
   SessionInfo,
   SessionMessage,
   StreamEvent,

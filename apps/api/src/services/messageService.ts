@@ -5,6 +5,7 @@ import { runOpenClawSession } from '../agents/agentRunner.js';
 import type { MemoryStore } from '../repositories/memoryStore.js';
 import type { StreamHub } from '../realtime/streamHub.js';
 import type { FileAssetService } from './fileAssetService.js';
+import { toolCallToPlanStep } from './sessionService.js';
 import type { SessionService } from './sessionService.js';
 
 export function createMessageService(
@@ -51,10 +52,160 @@ export function createMessageService(
     void Promise.resolve(handler()).catch((error) => handleRuntimeFailure(task, error));
   };
 
+  function findLastAssistantIndex(messages: Array<{ role: Message['role'] }>) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === 'assistant') return index;
+    }
+    return -1;
+  }
+
+  function mergeMessages(diskMessages: Message[], localMessages: Message[]) {
+    const merged: Message[] = [];
+    const seenIds = new Set<string>();
+    const seenMirrors = new Set<string>();
+
+    const mirrorWindowMs = 30_000;
+    const normalizeContent = (content: string) => content.trim().replace(/\s+/g, ' ');
+    const mirrorKey = (message: Message) => `${message.role}:${normalizeContent(message.content)}`;
+    const idAliases = new Map<string, string>();
+    const canonicalId = (id: string | undefined) => {
+      if (!id) return undefined;
+      let current = id;
+      const visited = new Set<string>();
+      while (idAliases.has(current) && !visited.has(current)) {
+        visited.add(current);
+        current = idAliases.get(current)!;
+      }
+      return current;
+    };
+    const canonicalParentId = (message: Message) => canonicalId(message.parentMessageId);
+    const planStepCount = (message: Message) => message.planSteps?.length ?? 0;
+    const toolCallCount = (message: Message) => message.toolCalls?.length ?? 0;
+    const mergeMirroredMessage = (current: Message, next: Message): Message => {
+      if (
+        toolCallCount(next) > toolCallCount(current)
+        || (toolCallCount(next) === toolCallCount(current) && planStepCount(next) > planStepCount(current))
+      ) {
+        return {
+          ...next,
+          id: current.id,
+          createdAt: current.createdAt,
+          parentMessageId: current.parentMessageId ?? next.parentMessageId,
+        };
+      }
+
+      if (
+        (toolCallCount(current) > 0 && toolCallCount(next) === 0)
+        || (planStepCount(current) > 0 && planStepCount(next) === 0)
+      ) {
+        return current;
+      }
+
+      return current.status === 'streaming' && next.status === 'completed'
+        ? { ...current, status: next.status }
+        : current;
+    };
+
+    for (const message of [...diskMessages, ...localMessages]) {
+      if (seenIds.has(message.id)) {
+        continue;
+      }
+
+      const key = mirrorKey(message);
+      const createdAtMs = Date.parse(message.createdAt);
+      const parentMirroredIndex = message.role === 'assistant' && canonicalParentId(message)
+        ? merged.findIndex((candidate) => (
+          candidate.role === 'assistant'
+          && canonicalParentId(candidate) === canonicalParentId(message)
+        ))
+        : -1;
+      if (parentMirroredIndex >= 0) {
+        const keptId = merged[parentMirroredIndex]!.id;
+        merged[parentMirroredIndex] = mergeMirroredMessage(merged[parentMirroredIndex]!, message);
+        idAliases.set(message.id, keptId);
+        seenIds.add(message.id);
+        continue;
+      }
+
+      const mirroredIndex = merged.findIndex((candidate) => {
+        if (mirrorKey(candidate) !== key) return false;
+        const candidateCreatedAtMs = Date.parse(candidate.createdAt);
+        if (!Number.isFinite(createdAtMs) || !Number.isFinite(candidateCreatedAtMs)) {
+          return true;
+        }
+        return Math.abs(createdAtMs - candidateCreatedAtMs) <= mirrorWindowMs;
+      });
+
+      if (mirroredIndex >= 0) {
+        const keptId = merged[mirroredIndex]!.id;
+        merged[mirroredIndex] = mergeMirroredMessage(merged[mirroredIndex]!, message);
+        idAliases.set(message.id, keptId);
+        seenIds.add(message.id);
+        continue;
+      }
+
+      if (seenMirrors.has(`${key}:${message.createdAt}`)) {
+        continue;
+      }
+
+      seenIds.add(message.id);
+      seenMirrors.add(`${key}:${message.createdAt}`);
+      merged.push(message);
+    }
+
+    return merged.sort((left, right) => (
+      Date.parse(left.createdAt) - Date.parse(right.createdAt)
+    ));
+  }
+
+  function readOpenClawDiskMessages(task: Task): Message[] {
+    if (!sessionService || !task.sessionKey) return [];
+
+    const agent = task.agentId ? store.getAgent(task.agentId) : store.getAgentByUserId(task.userId);
+    if (!agent?.gatewayAgentId) return [];
+
+    const sessionId = sessionService.resolveSessionId(
+      agent.gatewayAgentId,
+      task.sessionKey,
+    );
+    if (!sessionId) return [];
+
+    const sessionMessages = sessionService.readSessionMessages(
+      agent.gatewayAgentId,
+      sessionId,
+    );
+    if (sessionMessages.length === 0) return [];
+
+    const hasStructuredToolCalls = sessionMessages.some((sm) => sm.toolCalls?.length);
+    const trajectoryPlanSteps = hasStructuredToolCalls
+      ? []
+      : sessionService.readSessionPlanSteps(agent.gatewayAgentId, sessionId);
+    const lastAssistantIndex = findLastAssistantIndex(sessionMessages);
+
+    return sessionMessages.map((sm, index) => {
+      const structuredPlanSteps = sm.toolCalls?.length
+        ? sm.toolCalls.map((toolCall) => toolCallToPlanStep(toolCall))
+        : undefined;
+      return {
+        id: sm.id,
+        userId: task.userId,
+        taskId: task.id,
+        role: sm.role,
+        content: sm.content,
+        parentMessageId: sm.parentMessageId,
+        status: 'completed' as const,
+        toolCalls: sm.toolCalls?.length ? sm.toolCalls : undefined,
+        planSteps: structuredPlanSteps
+          ?? (index === lastAssistantIndex && trajectoryPlanSteps.length > 0 ? trajectoryPlanSteps : undefined),
+        createdAt: sm.createdAt,
+      };
+    });
+  }
+
   return {
     createMessage(task: Task, input: { role?: Message['role']; content: string; contextFileIds?: string[] }) {
       const role = input.role === 'assistant' || input.role === 'system' ? input.role : 'user';
-      const previousMessages = store.listMessages(task.id);
+      const previousMessages = mergeMessages(readOpenClawDiskMessages(task), store.listMessages(task.id));
       const firstUserMessage = role === 'user' && previousMessages.every((message) => message.role !== 'user');
       const shouldRenameTask = firstUserMessage && isDefaultConversationTitle(task.title);
       const activeTask = shouldRenameTask
@@ -91,7 +242,7 @@ export function createMessageService(
         if (client.isConnected()) {
           const isFollowup = !!agent?.gatewayAgentId;
           runAgent(activeTask, () =>
-            runOpenClawSession(activeTask, runtimeContent, store, stream, isFollowup),
+            runOpenClawSession(activeTask, runtimeContent, store, stream, isFollowup, message.id, sessionService),
           );
         } else {
           // OpenClaw 未连接，先触发连接再执行
@@ -99,7 +250,7 @@ export function createMessageService(
             await client.connect();
             const freshAgent = activeTask.agentId ? store.getAgent(activeTask.agentId) : store.getAgentByUserId(activeTask.userId);
             const isFollowup = !!freshAgent?.gatewayAgentId;
-            await runOpenClawSession(activeTask, runtimeContent, store, stream, isFollowup);
+            await runOpenClawSession(activeTask, runtimeContent, store, stream, isFollowup, message.id, sessionService);
           });
         }
       }
@@ -109,40 +260,11 @@ export function createMessageService(
 
     listMessages(taskId: string) {
       const local = store.listMessages(taskId);
-      if (local.length > 0) return local;
+      const task = store.tasks.get(taskId);
+      if (!task) return local;
 
-      // Fallback: try loading from OpenClaw session JSONL on disk
-      if (sessionService) {
-        const task = store.tasks.get(taskId);
-        if (task?.sessionKey) {
-          const agent = task.agentId ? store.getAgent(task.agentId) : store.getAgentByUserId(task.userId);
-          if (agent?.gatewayAgentId) {
-            const sessionId = sessionService.resolveSessionId(
-              agent.gatewayAgentId,
-              task.sessionKey,
-            );
-            if (sessionId) {
-              const sessionMessages = sessionService.readSessionMessages(
-                agent.gatewayAgentId,
-                sessionId,
-              );
-              if (sessionMessages.length > 0) {
-                return sessionMessages.map((sm) => ({
-                  id: sm.id,
-                  userId: task.userId,
-                  taskId: task.id,
-                  role: sm.role,
-                  content: sm.content,
-                  status: 'completed' as const,
-                  createdAt: sm.createdAt,
-                }));
-              }
-            }
-          }
-        }
-      }
-
-      return [];
+      const diskMessages = readOpenClawDiskMessages(task);
+      return diskMessages.length > 0 ? mergeMessages(diskMessages, local) : local;
     },
   };
 }

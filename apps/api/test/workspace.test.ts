@@ -21,9 +21,10 @@ afterEach(() => {
 describe('OpenClaw workspace path', () => {
   it('defaults to the current user OpenClaw directory instead of a machine-specific home path', () => {
     delete process.env.OPENCLAW_WORKSPACE_ROOT;
+    const env = {};
 
-    expect(getOpenClawWorkspaceRoot()).toBe(join(homedir(), '.openclaw'));
-    expect(createXuanzhiWorkspacePath('alice')).toBe(
+    expect(getOpenClawWorkspaceRoot(env)).toBe(join(homedir(), '.openclaw'));
+    expect(createXuanzhiWorkspacePath('alice', env)).toBe(
       `${join(homedir(), '.openclaw')}/workspace-xuanzhi-alice`,
     );
   });
@@ -31,8 +32,8 @@ describe('OpenClaw workspace path', () => {
   it('allows overriding the OpenClaw workspace root from environment', () => {
     process.env.OPENCLAW_WORKSPACE_ROOT = '/tmp/openclaw-test-root';
 
-    expect(createXuanzhiWorkspacePath('main')).toBe('/tmp/openclaw-test-root/workspace');
-    expect(createXuanzhiWorkspacePath('alice')).toBe(
+    expect(createXuanzhiWorkspacePath('main', process.env)).toBe('/tmp/openclaw-test-root/workspace');
+    expect(createXuanzhiWorkspacePath('alice', process.env)).toBe(
       '/tmp/openclaw-test-root/workspace-xuanzhi-alice',
     );
   });

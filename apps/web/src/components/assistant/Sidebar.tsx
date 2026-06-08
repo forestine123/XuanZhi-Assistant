@@ -261,9 +261,9 @@ export function Sidebar({
       key: task.id,
       label: (
         <span className="conversation-title">
-          {timeLabel ? <span className="conversation-title-time">{timeLabel}</span> : null}
           <span className="conversation-title-text">{task.title}</span>
           {isSessionTask ? <span className="conversation-badge" title="OpenClaw 历史会话">历史</span> : null}
+          {timeLabel ? <span className="conversation-title-time">{timeLabel}</span> : null}
         </span>
       ),
       icon: taskActive ? (

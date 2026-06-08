@@ -609,7 +609,7 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
 }
@@ -619,7 +619,7 @@
   color: #8b8b90;
   font-size: 11px;
   line-height: 1;
-  text-align: left;
+  text-align: right;
   white-space: nowrap;
 }
 

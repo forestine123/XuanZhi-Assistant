@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { SessionInfo, SessionMessage } from '@xuanzhi/shared/protocol';
+import type { MessagePlanStep, MessageToolCall, SessionInfo, SessionMessage } from '@xuanzhi/shared/protocol';
 
 import { getOpenClawWorkspaceRoot } from '../agents/workspace.js';
 import type { MemoryStore } from '../repositories/memoryStore.js';
@@ -10,7 +10,7 @@ import type { MemoryStore } from '../repositories/memoryStore.js';
 
 /**
  * Convert a Linux-style WSL path to a Windows UNC path that Node.js can read.
- * /home/lin123/.openclaw → //wsl.localhost/Ubuntu/home/lin123/.openclaw
+ * /home/<user>/.openclaw -> //wsl.localhost/<distro>/home/<user>/.openclaw
  *
  * Falls back to the original path when the translation doesn't apply (e.g.
  * running inside WSL directly, or the path is already a Windows path).
@@ -20,15 +20,15 @@ function toWindowsWslPath(linuxPath: string): string {
     return linuxPath;
   }
 
-  // Only translate if we're on Windows and the path looks like a WSL Linux path
-  if (process.platform !== 'win32') {
+  // Only translate if we're on Windows and the path looks like a WSL Linux path.
+  if (process.platform !== 'win32' || !linuxPath.startsWith('/')) {
     return linuxPath;
   }
 
-  // Detect WSL distro name from environment or default to "Ubuntu"
-  const distro = process.env.WSL_DISTRO_NAME?.trim() || 'Ubuntu';
+  const distro = process.env.OPENCLAW_WSL_DISTRO?.trim()
+    || process.env.WSL_DISTRO_NAME?.trim()
+    || 'Ubuntu';
 
-  // /home/lin123/.openclaw → //wsl.localhost/Ubuntu/home/lin123/.openclaw
   return `//wsl.localhost/${distro}${linuxPath}`;
 }
 
@@ -44,25 +44,79 @@ function getSessionsDir(gatewayAgentId: string): string {
 
 // ── JSONL parsing ──
 
+interface JsonlContentBlock {
+  type?: string;
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+  arguments?: unknown;
+  partialArgs?: string;
+}
+
 interface JsonlMessage {
   type?: string;
   id?: string;
+  parentId?: string;
   timestamp?: string;
   message?: {
     role?: string;
-    content?: Array<{ type: string; text?: string }>;
+    content?: unknown;
+    toolCallId?: string;
+    toolName?: string;
+    isError?: boolean;
   };
   role?: string;
-  content?: Array<{ type: string; text?: string }>;
+  content?: unknown;
+}
+
+interface JsonlTrajectoryEvent {
+  type?: string;
+  stream?: string;
+  name?: string;
+  toolName?: string;
+  command?: string;
+  data?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+  message?: unknown;
+  content?: unknown;
+  output?: unknown;
+  result?: unknown;
+}
+
+function safeReadText(path: string): string | undefined {
+  if (!existsSync(path)) return undefined;
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return undefined;
+  }
 }
 
 function extractTextContent(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
-  return (content as Array<{ type: string; text?: string }>)
+  return (content as JsonlContentBlock[])
     .filter((c) => c.type === 'text' && typeof c.text === 'string')
     .map((c) => c.text!)
     .join('\n');
+}
+
+function stripRawToolPayloads(text: string) {
+  return text
+    .replace(/```(?:json|xml)?\s*[\r\n][\s\S]*?(?:"(?:tool_use|tool_result|tool_call|function_call|function_result|toolName|toolCallId|function_name)"|<\/?(?:tool_call|function_call|tool_calls|function_calls)\b)[\s\S]*?```/gi, '')
+    .replace(/<(tool_call|function_call|tool_calls|function_calls)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<\/?(?:tool_call|function_call|tool_calls|function_calls)[^>]*>/gi, '')
+    .split(/\r?\n/)
+    .filter((line) => {
+      const value = line.trim();
+      if (!value) return true;
+      if (/^(?:tool_use|tool_result|function_call|function_result|context\.compiled|trace\.metadata)\b/i.test(value)) return false;
+      if (/^\{.*"(?:tool_use|tool_result|tool_call|function_call|function_result|toolName|toolCallId|function_name|arguments|args|params)"/i.test(value)) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
 }
 
 function normalizeRole(role: string | undefined): SessionMessage['role'] {
@@ -109,6 +163,74 @@ function normalizeAssistantSessionText(text: string) {
   return withoutPrelude;
 }
 
+function readContentBlocks(content: unknown): JsonlContentBlock[] {
+  return Array.isArray(content)
+    ? content.filter((item): item is JsonlContentBlock => Boolean(item && typeof item === 'object'))
+    : [];
+}
+
+function extractToolCalls(content: unknown): MessageToolCall[] {
+  return readContentBlocks(content)
+    .filter((item) => item.type === 'toolCall' && typeof item.id === 'string')
+    .map((item) => ({
+      id: item.id!,
+      name: typeof item.name === 'string' && item.name.trim() ? item.name.trim() : 'tool',
+      arguments: item.arguments,
+      status: 'running' as const,
+    }));
+}
+
+function mergeToolCall(current: MessageToolCall[], next: MessageToolCall): MessageToolCall[] {
+  const index = current.findIndex((item) => item.id === next.id);
+  if (index < 0) return [...current, next];
+
+  return current.map((item) => (
+    item.id === next.id
+      ? {
+          ...item,
+          ...next,
+          arguments: next.arguments ?? item.arguments,
+          result: next.result ?? item.result,
+          isError: next.isError ?? item.isError,
+        }
+      : item
+  ));
+}
+
+function attachToolResult(
+  current: MessageToolCall[],
+  result: { id: string; name?: string; content: string; isError?: boolean },
+): MessageToolCall[] {
+  const existing = current.find((item) => item.id === result.id);
+  return mergeToolCall(current, {
+    id: result.id,
+    name: result.name || existing?.name || 'tool',
+    arguments: existing?.arguments,
+    result: result.content,
+    isError: result.isError,
+    status: result.isError ? 'error' : 'done',
+  });
+}
+
+export function toolCallToPlanStep(toolCall: MessageToolCall): MessagePlanStep {
+  const args = toolCall.arguments && typeof toolCall.arguments === 'object'
+    ? toolCall.arguments as Record<string, unknown>
+    : {};
+  const path = typeof args.path === 'string' ? args.path.split(/[\\/]/).at(-1) : undefined;
+  const command = typeof args.command === 'string' ? args.command : undefined;
+  const text = command
+    ? `${toolCall.name}: ${command}`
+    : path
+      ? `${toolCall.name}: ${path}`
+      : toolCall.name;
+
+  return {
+    id: toolCall.id,
+    text,
+    status: toolCall.status === 'error' ? 'error' : toolCall.status === 'running' ? 'running' : 'done',
+  };
+}
+
 function parseJsonlLine(line: string, index: number): SessionMessage | null {
   if (!line.trim()) return null;
 
@@ -125,7 +247,7 @@ function parseJsonlLine(line: string, index: number): SessionMessage | null {
 
   if (!role || !content) return null;
 
-  const text = extractTextContent(content);
+  const text = stripRawToolPayloads(extractTextContent(content));
   const normalizedRole = normalizeRole(role);
   const visibleText = normalizedRole === 'assistant'
     ? normalizeAssistantSessionText(text)
@@ -138,6 +260,220 @@ function parseJsonlLine(line: string, index: number): SessionMessage | null {
     content: visibleText,
     createdAt: raw.timestamp || new Date().toISOString(),
   };
+}
+
+export function parseOpenClawSessionMessages(text: string): SessionMessage[] {
+  const messages: SessionMessage[] = [];
+  let assistantTurn: SessionMessage | undefined;
+
+  const flushAssistantTurn = () => {
+    if (!assistantTurn) return;
+    const toolCalls = assistantTurn.toolCalls?.map((toolCall) => (
+      toolCall.status === 'running' ? { ...toolCall, status: 'done' as const } : toolCall
+    ));
+    if (assistantTurn.content.trim() || toolCalls?.length) {
+      messages.push({
+        ...assistantTurn,
+        content: assistantTurn.content.trim(),
+        toolCalls,
+      });
+    }
+    assistantTurn = undefined;
+  };
+
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    if (!line.trim()) continue;
+
+    let raw: JsonlMessage;
+    try {
+      raw = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    if (raw.type && raw.type !== 'message') continue;
+
+    const role = raw.message?.role ?? raw.role;
+    const content = raw.message?.content ?? raw.content;
+    const createdAt = raw.timestamp || new Date().toISOString();
+
+    if (role === 'user') {
+      flushAssistantTurn();
+      const userText = stripRawToolPayloads(extractTextContent(content));
+      if (!userText.trim()) continue;
+      messages.push({
+        id: raw.id || `session-user-${index}`,
+        role: 'user',
+        content: userText,
+        parentMessageId: raw.parentId,
+        createdAt,
+      });
+      continue;
+    }
+
+    if (role === 'assistant') {
+      const assistantText = normalizeAssistantSessionText(stripRawToolPayloads(extractTextContent(content)));
+      const toolCalls = extractToolCalls(content);
+      if (!assistantText.trim() && toolCalls.length === 0) continue;
+
+      if (!assistantTurn) {
+        assistantTurn = {
+          id: raw.id || `session-assistant-${index}`,
+          role: 'assistant',
+          content: '',
+          parentMessageId: raw.parentId,
+          createdAt,
+          toolCalls: [],
+        };
+      }
+
+      if (assistantText.trim()) {
+        assistantTurn.content = [assistantTurn.content, assistantText].filter(Boolean).join('\n\n');
+      }
+      for (const toolCall of toolCalls) {
+        assistantTurn.toolCalls = mergeToolCall(assistantTurn.toolCalls ?? [], toolCall);
+      }
+      continue;
+    }
+
+    if (role === 'toolResult') {
+      const toolCallId = raw.message?.toolCallId;
+      if (typeof toolCallId !== 'string' || !toolCallId) continue;
+
+      if (!assistantTurn) {
+        assistantTurn = {
+          id: raw.parentId || raw.id || `session-assistant-${index}`,
+          role: 'assistant',
+          content: '',
+          parentMessageId: raw.parentId,
+          createdAt,
+          toolCalls: [],
+        };
+      }
+
+      assistantTurn.toolCalls = attachToolResult(assistantTurn.toolCalls ?? [], {
+        id: toolCallId,
+        name: typeof raw.message?.toolName === 'string' ? raw.message.toolName : undefined,
+        content: stripRawToolPayloads(extractTextContent(content)),
+        isError: Boolean(raw.message?.isError),
+      });
+    }
+  }
+
+  flushAssistantTurn();
+  return messages;
+}
+
+function stringifyCompact(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value && typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const text = stringifyCompact(value);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function eventBag(event: JsonlTrajectoryEvent): Record<string, unknown> {
+  return {
+    ...(event.payload ?? {}),
+    ...(event.data ?? {}),
+    ...event,
+  };
+}
+
+function eventName(event: JsonlTrajectoryEvent): string {
+  const bag = eventBag(event);
+  return firstString(event.stream, event.type, bag.event, bag.phase, bag.kind, bag.name, bag.toolName) ?? '';
+}
+
+function isNoisyTrajectoryEvent(name: string) {
+  const normalized = name.toLowerCase();
+  return !normalized
+    || normalized.includes('session')
+    || normalized.includes('context')
+    || normalized.includes('metadata')
+    || normalized.includes('heartbeat')
+    || normalized.includes('liveness')
+    || normalized.includes('token')
+    || normalized.includes('model')
+    || normalized.includes('thinking')
+    || normalized.includes('reasoning');
+}
+
+function buildTrajectoryStep(event: JsonlTrajectoryEvent, index: number): MessagePlanStep | undefined {
+  const name = eventName(event);
+  if (isNoisyTrajectoryEvent(name)) return undefined;
+
+  const bag = eventBag(event);
+  const command = firstString(bag.command, bag.cmd, bag.shell, bag.argv);
+  const path = firstString(bag.path, bag.file, bag.filename, bag.target);
+  const tool = firstString(bag.toolName, bag.tool, bag.name, bag.function_name, bag.functionName);
+  const haystack = [name, tool, command, path].filter(Boolean).join(' ').toLowerCase();
+  const status: MessagePlanStep['status'] = haystack.includes('error') || haystack.includes('fail')
+    ? 'error'
+    : 'done';
+
+  let text: string | undefined;
+  if (haystack.includes('write') || haystack.includes('create') || haystack.includes('save')) {
+    text = path ? `write ${path}` : 'write';
+  } else if (haystack.includes('read') || haystack.includes('open')) {
+    text = path ? `read ${path}` : 'read';
+  } else if (haystack.includes('exec') || haystack.includes('command') || haystack.includes('shell') || command) {
+    text = command ? `exec: ${command.slice(0, 160)}` : 'exec';
+  } else if (haystack.includes('search') || haystack.includes('rg') || haystack.includes('grep')) {
+    text = 'search';
+  } else if (haystack.includes('edit') || haystack.includes('patch')) {
+    text = path ? `edit ${path}` : 'edit';
+  } else if (haystack.includes('install') || haystack.includes('pnpm') || haystack.includes('npm')) {
+    text = command ? `install: ${command.slice(0, 160)}` : 'install';
+  } else if (haystack.includes('test') || haystack.includes('vitest')) {
+    text = command ? `test: ${command.slice(0, 160)}` : 'test';
+  } else if (tool && /(tool|call|use|function)/i.test(name)) {
+    text = `tool: ${tool.slice(0, 80)}`;
+  }
+
+  if (!text) return undefined;
+
+  return {
+    id: firstString(bag.id, bag.callId, bag.toolCallId) ?? `trajectory-step-${index}`,
+    text,
+    status,
+  };
+}
+
+export function parseOpenClawTrajectorySteps(text: string): MessagePlanStep[] {
+  const steps: MessagePlanStep[] = [];
+  const seen = new Set<string>();
+
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    if (!line.trim()) continue;
+    let event: JsonlTrajectoryEvent;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const step = buildTrajectoryStep(event, index);
+    if (!step) continue;
+    const dedupeKey = `${step.id}:${step.text}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    steps.push(step);
+  }
+
+  return steps;
 }
 
 // ── Session info from sessions.json ──
@@ -253,22 +589,23 @@ export function createSessionService(store: MemoryStore) {
     // Fallback: read JSONL from OpenClaw disk
     const dir = getSessionsDir(gatewayAgentId);
     const jsonlPath = join(dir, `${sessionId}.jsonl`);
+    const text = safeReadText(jsonlPath);
 
-    if (!existsSync(jsonlPath)) {
-      return [];
-    }
+    return text ? parseOpenClawSessionMessages(text) : [];
+  }
 
-    let text: string;
-    try {
-      text = readFileSync(jsonlPath, 'utf8');
-    } catch {
-      return [];
-    }
+  /**
+   * Read the OpenClaw trajectory file and project tool calls into UI plan steps.
+   */
+  function readSessionPlanSteps(
+    gatewayAgentId: string,
+    sessionId: string,
+  ): MessagePlanStep[] {
+    const dir = getSessionsDir(gatewayAgentId);
+    const trajectoryPath = join(dir, `${sessionId}.trajectory.jsonl`);
+    const text = safeReadText(trajectoryPath);
 
-    return text
-      .split(/\r?\n/)
-      .map((line, index) => parseJsonlLine(line, index))
-      .filter((msg): msg is SessionMessage => msg !== null);
+    return text ? parseOpenClawTrajectorySteps(text) : [];
   }
 
   /**
@@ -327,6 +664,7 @@ export function createSessionService(store: MemoryStore) {
   return {
     readSessionsIndex,
     readSessionMessages,
+    readSessionPlanSteps,
     getSessionDetail,
     listSessionsForUser,
     resolveSessionId,

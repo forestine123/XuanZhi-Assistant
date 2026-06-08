@@ -294,7 +294,9 @@ export class MemoryStore {
     role: Message['role'];
     content: string;
     contextFileIds?: string[];
+    parentMessageId?: string;
     status?: Message['status'];
+    toolCalls?: Message['toolCalls'];
   }) {
     const message: Message = {
       id: `msg_${randomUUID()}`,
@@ -303,14 +305,16 @@ export class MemoryStore {
       role: input.role,
       content: input.content,
       contextFileIds: input.contextFileIds,
+      parentMessageId: input.parentMessageId,
       status: input.status,
+      toolCalls: input.toolCalls,
       createdAt: nowIso(),
     };
     this.messages.set(input.taskId, [...(this.messages.get(input.taskId) ?? []), message]);
     return message;
   }
 
-  updateMessage(taskId: string, messageId: string, input: { content?: string; status?: Message['status']; planSteps?: MessagePlanStep[] }) {
+  updateMessage(taskId: string, messageId: string, input: { content?: string; status?: Message['status']; planSteps?: MessagePlanStep[]; toolCalls?: Message['toolCalls'] }) {
     const messages = this.messages.get(taskId);
     if (!messages) {
       return undefined;
@@ -326,6 +330,7 @@ export class MemoryStore {
       content: input.content ?? current.content,
       status: input.status ?? current.status,
       planSteps: input.planSteps ?? current.planSteps,
+      toolCalls: input.toolCalls ?? current.toolCalls,
     };
     this.messages.set(
       taskId,
