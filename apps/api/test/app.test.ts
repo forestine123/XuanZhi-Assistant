@@ -113,6 +113,108 @@ const gateway = vi.hoisted(() => {
           throw new Error(`unknown session: ${input.sessionKey}`);
         }
         setTimeout(() => {
+          if (input.message.includes('Disk failed tool')) {
+            void (async () => {
+              const [{ existsSync, mkdirSync, readFileSync, writeFileSync }, { join }] = await Promise.all([
+                import('node:fs'),
+                import('node:path'),
+              ]);
+              const gatewayAgentId = input.sessionKey.split(':')[1] ?? 'gateway-agent-1';
+              const sessionsDir = join(process.env.OPENCLAW_WORKSPACE_ROOT!, 'agents', gatewayAgentId, 'sessions');
+              const sessionId = 'disk-backfill-runtime-session';
+              const indexPath = join(sessionsDir, 'sessions.json');
+              mkdirSync(sessionsDir, { recursive: true });
+              const currentIndex = existsSync(indexPath)
+                ? JSON.parse(readFileSync(indexPath, 'utf8')) as Record<string, unknown>
+                : {};
+              writeFileSync(
+                indexPath,
+                JSON.stringify({
+                  ...currentIndex,
+                  [input.sessionKey]: {
+                    key: input.sessionKey,
+                    sessionId,
+                    title: 'Disk failed tool',
+                    status: 'completed',
+                    updatedAt: Date.now(),
+                    sessionStartedAt: Date.now(),
+                  },
+                }),
+                'utf8',
+              );
+              writeFileSync(
+                join(sessionsDir, `${sessionId}.jsonl`),
+                [
+                  JSON.stringify({
+                    type: 'message',
+                    id: 'disk-runtime-user',
+                    timestamp: new Date().toISOString(),
+                    message: { role: 'user', content: [{ type: 'text', text: input.message }] },
+                  }),
+                  JSON.stringify({
+                    type: 'message',
+                    id: 'disk-runtime-assistant',
+                    parentId: 'disk-runtime-user',
+                    timestamp: new Date(Date.now() + 1).toISOString(),
+                    message: {
+                      role: 'assistant',
+                      content: [
+                        { type: 'text', text: 'Runtime disk answer.' },
+                        { type: 'toolCall', id: 'tool-disk-fail', name: 'web_fetch', arguments: { url: 'https://example.com' } },
+                      ],
+                    },
+                  }),
+                  JSON.stringify({
+                    type: 'message',
+                    id: 'disk-runtime-result',
+                    parentId: 'disk-runtime-assistant',
+                    timestamp: new Date(Date.now() + 2).toISOString(),
+                    message: {
+                      role: 'toolResult',
+                      toolCallId: 'tool-disk-fail',
+                      toolName: 'web_fetch',
+                      content: [{ type: 'text', text: '{"status":"error","error":"blocked"}' }],
+                      isError: true,
+                    },
+                  }),
+                ].join('\n'),
+                'utf8',
+              );
+            })();
+          }
+          if (input.message.includes('Mirror tool')) {
+            emit('agent', {
+              sessionKey: input.sessionKey,
+              stream: 'tool_call',
+              data: {
+                toolCallId: `tool-${Date.now()}`,
+                toolName: 'read',
+                path: 'IDENTITY.md',
+              },
+            });
+          }
+          if (input.message.includes('Realtime failed tool')) {
+            emit('agent', {
+              sessionKey: input.sessionKey,
+              stream: 'tool_call',
+              data: {
+                toolCallId: 'tool-realtime-fail',
+                toolName: 'web_search',
+                query: 'latest docs',
+              },
+            });
+            setTimeout(() => {
+              emit('agent', {
+                sessionKey: input.sessionKey,
+                stream: 'tool_result',
+                data: {
+                  toolCallId: 'tool-realtime-fail',
+                  toolName: 'web_search',
+                  result: '{"status":"error","error":"missing_api_key"}',
+                },
+              });
+            }, 10);
+          }
           const payload: {
             runId: string;
             sessionKey?: string;
@@ -286,13 +388,13 @@ const testProfile: XuanzhiAgentProfile = {
 
 async function waitForCondition(assertion: () => void | Promise<void>) {
   let lastError: unknown;
-  for (let index = 0; index < 30; index += 1) {
+  for (let index = 0; index < 100; index += 1) {
     try {
       await assertion();
       return;
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
   throw lastError;
@@ -741,6 +843,494 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
     );
   });
 
+  it('restores OpenClaw disk messages with trajectory steps for child sessions', async () => {
+    const userA = await login(app, 'alice');
+    const agentId = userA.agent?.id;
+    expect(agentId).toBeTruthy();
+
+    const mainResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/main-task`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const mainTask = mainResponse.json<Task>();
+    const gatewayAgentId = mainTask.sessionKey?.split(':')[1];
+    expect(gatewayAgentId).toBeTruthy();
+
+    const conversationResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/conversations`,
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { title: 'Disk-backed history' },
+    });
+    const childTask = conversationResponse.json<Task>();
+    const sessionId = 'history-session-1';
+    const sessionsDir = join(workspaceRoot, 'agents', gatewayAgentId!, 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    writeFileSync(
+      join(sessionsDir, 'sessions.json'),
+      JSON.stringify({
+        [childTask.sessionKey!]: {
+          key: childTask.sessionKey,
+          sessionId,
+          title: childTask.title,
+          status: 'completed',
+          updatedAt: Date.now(),
+          sessionStartedAt: Date.now(),
+        },
+      }),
+      'utf8',
+    );
+    writeFileSync(
+      join(sessionsDir, `${sessionId}.jsonl`),
+      [
+        JSON.stringify({ type: 'session.started', timestamp: '2026-01-01T00:00:00.000Z' }),
+        JSON.stringify({
+          type: 'message',
+          id: 'u1',
+          timestamp: '2026-01-01T00:00:01.000Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'Build a report' }] },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'a1',
+          timestamp: '2026-01-01T00:00:02.000Z',
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'thinking', text: 'internal thinking must stay hidden' },
+              { type: 'text', text: '<tool_call>{"name":"exec","arguments":{"cmd":"secret"}}</tool_call>' },
+              { type: 'text', text: 'Report is ready.' },
+            ],
+          },
+        }),
+      ].join('\n'),
+      'utf8',
+    );
+    writeFileSync(
+      join(sessionsDir, `${sessionId}.trajectory.jsonl`),
+      [
+        JSON.stringify({ type: 'context.compiled', data: { tokenCount: 123 } }),
+        JSON.stringify({ type: 'tool_call', data: { toolName: 'exec', command: 'python report.py', toolCallId: 'call-1' } }),
+        JSON.stringify({ type: 'tool_result', data: { toolName: 'write', path: 'outputs/report.md', toolCallId: 'call-2' } }),
+      ].join('\n'),
+      'utf8',
+    );
+
+    const messagesResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${childTask.id}/messages`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+
+    expect(messagesResponse.statusCode).toBe(200);
+    const messages = messagesResponse.json<Message[]>();
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(messages.at(-1)?.content).toBe('Report is ready.');
+    expect(messages.at(-1)?.content).not.toContain('internal thinking');
+    expect(messages.at(-1)?.content).not.toContain('tool_call');
+    expect(messages.at(-1)?.planSteps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: expect.stringContaining('exec: python report.py'), status: 'done' }),
+        expect.objectContaining({ text: expect.stringContaining('write outputs/report.md'), status: 'done' }),
+      ]),
+    );
+
+    await sendUserMessage(app, userA.token, childTask.id, 'Continue the same session');
+
+    await waitForCondition(async () => {
+      const continuedResponse = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${childTask.id}/messages`,
+        headers: { authorization: `Bearer ${userA.token}` },
+      });
+      const continued = continuedResponse.json<Message[]>();
+      expect(continued.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+      expect(continued[0]?.content).toBe('Build a report');
+      expect(continued[1]?.content).toBe('Report is ready.');
+      expect(continued[1]?.planSteps).toEqual(expect.any(Array));
+      expect(continued[2]?.content).toBe('Continue the same session');
+      expect(continued[3]?.content).toContain('Continue the same session');
+    });
+  });
+
+  it('deduplicates mirrored OpenClaw disk and local messages', async () => {
+    const userA = await login(app, 'alice');
+    const agentId = userA.agent?.id;
+    expect(agentId).toBeTruthy();
+
+    const mainResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/main-task`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const mainTask = mainResponse.json<Task>();
+    const gatewayAgentId = mainTask.sessionKey?.split(':')[1];
+    expect(gatewayAgentId).toBeTruthy();
+
+    const conversationResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/conversations`,
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { title: 'Mirror-backed history' },
+    });
+    const childTask = conversationResponse.json<Task>();
+
+    await sendUserMessage(app, userA.token, childTask.id, 'Mirror tool');
+    await waitForCondition(async () => {
+      const taskResponse = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${childTask.id}`,
+        headers: { authorization: `Bearer ${userA.token}` },
+      });
+      expect(taskResponse.json<Task>().status).toBe('completed');
+    });
+
+    const localResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${childTask.id}/messages`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const localMessages = localResponse.json<Message[]>();
+    expect(localMessages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(localMessages[1]?.planSteps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: expect.stringContaining('read: IDENTITY.md'), status: 'done' }),
+      ]),
+    );
+
+    const sessionId = 'mirrored-session-1';
+    const sessionsDir = join(workspaceRoot, 'agents', gatewayAgentId!, 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    writeFileSync(
+      join(sessionsDir, 'sessions.json'),
+      JSON.stringify({
+        [childTask.sessionKey!]: {
+          key: childTask.sessionKey,
+          sessionId,
+          title: childTask.title,
+          status: 'completed',
+          updatedAt: Date.now(),
+          sessionStartedAt: Date.now(),
+        },
+      }),
+      'utf8',
+    );
+    writeFileSync(
+      join(sessionsDir, `${sessionId}.jsonl`),
+      [
+        JSON.stringify({
+          type: 'message',
+          id: 'disk-user',
+          timestamp: new Date(Date.parse(localMessages[0]!.createdAt) + 1_000).toISOString(),
+          message: { role: 'user', content: [{ type: 'text', text: localMessages[0]!.content }] },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'disk-assistant',
+          timestamp: new Date(Date.parse(localMessages[1]!.createdAt) + 1_000).toISOString(),
+          message: { role: 'assistant', content: [{ type: 'text', text: localMessages[1]!.content }] },
+        }),
+      ].join('\n'),
+      'utf8',
+    );
+
+    const mergedResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${childTask.id}/messages`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const merged = mergedResponse.json<Message[]>();
+
+    expect(merged.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(merged.map((message) => message.content)).toEqual(localMessages.map((message) => message.content));
+    expect(merged[1]?.planSteps).toEqual(localMessages[1]?.planSteps);
+  });
+
+  it('restores structured OpenClaw tool calls from session jsonl messages', async () => {
+    const userA = await login(app, 'alice');
+    const agentId = userA.agent?.id;
+    expect(agentId).toBeTruthy();
+
+    const mainResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/main-task`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const mainTask = mainResponse.json<Task>();
+    const gatewayAgentId = mainTask.sessionKey?.split(':')[1];
+    expect(gatewayAgentId).toBeTruthy();
+
+    const conversationResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/conversations`,
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { title: 'Structured tool history' },
+    });
+    const childTask = conversationResponse.json<Task>();
+    const sessionId = 'structured-tool-session-1';
+    const sessionsDir = join(workspaceRoot, 'agents', gatewayAgentId!, 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    writeFileSync(
+      join(sessionsDir, 'sessions.json'),
+      JSON.stringify({
+        [childTask.sessionKey!]: {
+          key: childTask.sessionKey,
+          sessionId,
+          title: childTask.title,
+          status: 'completed',
+          updatedAt: Date.now(),
+          sessionStartedAt: Date.now(),
+        },
+      }),
+      'utf8',
+    );
+    writeFileSync(
+      join(sessionsDir, `${sessionId}.jsonl`),
+      [
+        JSON.stringify({
+          type: 'message',
+          id: 'u-structured',
+          timestamp: '2026-01-01T00:00:01.000Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'Read config' }] },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'a-tool',
+          parentId: 'u-structured',
+          timestamp: '2026-01-01T00:00:02.000Z',
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'I will inspect the config.' },
+              { type: 'toolCall', id: 'call-read-1', name: 'read', arguments: { path: '/tmp/IDENTITY.md' } },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'r-tool',
+          parentId: 'a-tool',
+          timestamp: '2026-01-01T00:00:03.000Z',
+          message: {
+            role: 'toolResult',
+            toolCallId: 'call-read-1',
+            toolName: 'read',
+            content: [{ type: 'text', text: '# IDENTITY\nName: XuanZhi' }],
+            isError: false,
+          },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'a-final',
+          parentId: 'r-tool',
+          timestamp: '2026-01-01T00:00:04.000Z',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'The config says XuanZhi.' }] },
+        }),
+      ].join('\n'),
+      'utf8',
+    );
+
+    const messagesResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${childTask.id}/messages`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const messages = messagesResponse.json<Message[]>();
+
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(messages[1]?.content).toContain('I will inspect the config.');
+    expect(messages[1]?.content).toContain('The config says XuanZhi.');
+    expect(messages[1]?.toolCalls).toEqual([
+      expect.objectContaining({
+        id: 'call-read-1',
+        name: 'read',
+        status: 'done',
+        result: expect.stringContaining('Name: XuanZhi'),
+      }),
+    ]);
+    expect(messages[1]?.planSteps).toEqual([
+      expect.objectContaining({ id: 'call-read-1', text: expect.stringContaining('read: IDENTITY.md') }),
+    ]);
+  });
+
+  it('merges live assistant messages with disk history by parent user message', async () => {
+    const userA = await login(app, 'alice');
+    const agentId = userA.agent?.id;
+    expect(agentId).toBeTruthy();
+
+    const conversationResponse = await app.inject({
+      method: 'POST',
+      url: `/api/agents/${agentId}/conversations`,
+      headers: { authorization: `Bearer ${userA.token}` },
+      payload: { title: 'Tool failure merge' },
+    });
+    const childTask = conversationResponse.json<Task>();
+
+    await sendUserMessage(app, userA.token, childTask.id, 'Explain information tools');
+    await waitForCondition(async () => {
+      const messagesResponse = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${childTask.id}/messages`,
+        headers: { authorization: `Bearer ${userA.token}` },
+      });
+      const liveMessages = messagesResponse.json<Message[]>();
+      expect(liveMessages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    });
+
+    const liveMessagesResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${childTask.id}/messages`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const liveMessages = liveMessagesResponse.json<Message[]>();
+    expect(liveMessages[1]?.parentMessageId).toBe(liveMessages[0]?.id);
+
+    const gatewayAgentId = childTask.sessionKey?.split(':')[1];
+    expect(gatewayAgentId).toBeTruthy();
+    const sessionId = 'parent-merge-session-1';
+    const sessionsDir = join(workspaceRoot, 'agents', gatewayAgentId!, 'sessions');
+    mkdirSync(sessionsDir, { recursive: true });
+    writeFileSync(
+      join(sessionsDir, 'sessions.json'),
+      JSON.stringify({
+        [childTask.sessionKey!]: {
+          key: childTask.sessionKey,
+          sessionId,
+          title: childTask.title,
+          status: 'completed',
+          updatedAt: Date.now(),
+          sessionStartedAt: Date.now(),
+        },
+      }),
+      'utf8',
+    );
+    writeFileSync(
+      join(sessionsDir, `${sessionId}.jsonl`),
+      [
+        JSON.stringify({
+          type: 'message',
+          id: 'disk-user-parent',
+          timestamp: new Date(Date.parse(liveMessages[0]!.createdAt) + 1_000).toISOString(),
+          message: { role: 'user', content: [{ type: 'text', text: liveMessages[0]!.content }] },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'disk-assistant-parent',
+          parentId: 'disk-user-parent',
+          timestamp: new Date(Date.parse(liveMessages[1]!.createdAt) + 1_000).toISOString(),
+          message: {
+            role: 'assistant',
+            content: [
+              { type: 'text', text: 'Disk answer with real tool state.' },
+              { type: 'toolCall', id: 'call-search-failed', name: 'web_search', arguments: { query: 'AI tools' } },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'disk-tool-result-parent',
+          parentId: 'disk-assistant-parent',
+          timestamp: new Date(Date.parse(liveMessages[1]!.createdAt) + 2_000).toISOString(),
+          message: {
+            role: 'toolResult',
+            toolCallId: 'call-search-failed',
+            toolName: 'web_search',
+            content: [{ type: 'text', text: '{"status":"error","error":"missing_api_key"}' }],
+            isError: true,
+          },
+        }),
+      ].join('\n'),
+      'utf8',
+    );
+
+    const mergedResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${childTask.id}/messages`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const mergedMessages = mergedResponse.json<Message[]>();
+
+    expect(mergedMessages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(mergedMessages[1]?.content).toBe('Disk answer with real tool state.');
+    expect(mergedMessages[1]?.toolCalls).toEqual([
+      expect.objectContaining({
+        id: 'call-search-failed',
+        name: 'web_search',
+        status: 'error',
+        result: expect.stringContaining('missing_api_key'),
+      }),
+    ]);
+    expect(mergedMessages[1]?.planSteps).toEqual([
+      expect.objectContaining({ id: 'call-search-failed', status: 'error' }),
+    ]);
+  });
+
+  it('keeps delayed realtime tool failures visible without waiting for disk refresh', async () => {
+    const userA = await login(app, 'alice');
+    const task = await createTask(app, userA.token, 'Realtime failed tool');
+
+    await sendUserMessage(app, userA.token, task.id, task.userInput);
+
+    await waitForCondition(async () => {
+      const taskResponse = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${task.id}`,
+        headers: { authorization: `Bearer ${userA.token}` },
+      });
+      expect(taskResponse.json<Task>().status).toBe('completed');
+    });
+
+    const messagesResponse = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/messages`,
+      headers: { authorization: `Bearer ${userA.token}` },
+    });
+    const messages = messagesResponse.json<Message[]>();
+
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+    expect(messages[1]?.planSteps).toEqual([
+      expect.objectContaining({
+        id: 'tool-realtime-fail',
+        text: expect.stringContaining('web_search'),
+        status: 'error',
+      }),
+    ]);
+  });
+
+  it('backfills realtime assistant tool failures from OpenClaw disk history before refresh', async () => {
+    const userA = await login(app, 'alice');
+    const task = await createTask(app, userA.token, 'Disk failed tool');
+
+    await sendUserMessage(app, userA.token, task.id, task.userInput);
+
+    await waitForCondition(async () => {
+      const messagesResponse = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${task.id}/messages`,
+        headers: { authorization: `Bearer ${userA.token}` },
+      });
+      const messages = messagesResponse.json<Message[]>();
+      expect(messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+      expect(messages[1]?.content).toBe('Runtime disk answer.');
+      expect(messages[1]?.toolCalls).toEqual([
+        expect.objectContaining({
+          id: 'tool-disk-fail',
+          name: 'web_fetch',
+          status: 'error',
+          result: expect.stringContaining('blocked'),
+        }),
+      ]);
+      expect(messages[1]?.planSteps).toEqual([
+        expect.objectContaining({
+          id: 'tool-disk-fail',
+          text: expect.stringContaining('web_fetch'),
+          status: 'error',
+        }),
+      ]);
+    });
+  });
+
   it('creates repeated default conversations with unique OpenClaw labels', async () => {
     const userA = await login(app, 'alice');
     const agentId = userA.agent?.id;
@@ -793,23 +1383,25 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
 
     await sendUserMessage(app, userA.token, childTask.id, '请测试这个新建会话');
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    const chatSendCall = gateway.calls.find((call) => call.method === 'chat.send');
-    expect(chatSendCall?.params).toMatchObject({
-      sessionKey: childTask.sessionKey,
-      message: '请测试这个新建会话',
+    await waitForCondition(() => {
+      const chatSendCall = gateway.calls.find((call) => call.method === 'chat.send');
+      expect(chatSendCall?.params).toMatchObject({
+        sessionKey: childTask.sessionKey,
+        message: '请测试这个新建会话',
+      });
     });
 
-    const taskResponse = await app.inject({
-      method: 'GET',
-      url: `/api/tasks/${childTask.id}`,
-      headers: { authorization: `Bearer ${userA.token}` },
-    });
-    expect(taskResponse.json<Task>()).toMatchObject({
-      id: childTask.id,
-      title: '请测试这个新建会话',
-      status: 'completed',
+    await waitForCondition(async () => {
+      const taskResponse = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${childTask.id}`,
+        headers: { authorization: `Bearer ${userA.token}` },
+      });
+      expect(taskResponse.json<Task>()).toMatchObject({
+        id: childTask.id,
+        title: '请测试这个新建会话',
+        status: 'completed',
+      });
     });
   });
 
@@ -827,16 +1419,17 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
     const childTask = conversationResponse.json<Task>();
 
     await sendUserMessage(app, userA.token, childTask.id, '无 sessionKey 事件也应该完成');
-    await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const taskResponse = await app.inject({
-      method: 'GET',
-      url: `/api/tasks/${childTask.id}`,
-      headers: { authorization: `Bearer ${userA.token}` },
-    });
-    expect(taskResponse.json<Task>()).toMatchObject({
-      id: childTask.id,
-      status: 'completed',
+    await waitForCondition(async () => {
+      const taskResponse = await app.inject({
+        method: 'GET',
+        url: `/api/tasks/${childTask.id}`,
+        headers: { authorization: `Bearer ${userA.token}` },
+      });
+      expect(taskResponse.json<Task>()).toMatchObject({
+        id: childTask.id,
+        status: 'completed',
+      });
     });
 
     const messagesResponse = await app.inject({
@@ -1063,8 +1656,8 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
     expect(listResponse.json<Array<{ name: string; workspacePath: string }>>()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: 'notes.md',
-          workspacePath: expect.stringContaining('notes.md'),
+          name: expect.stringMatching(/notes.*\.md$/),
+          workspacePath: expect.stringMatching(/notes.*\.md$/),
         }),
       ]),
     );
@@ -1108,12 +1701,14 @@ describe('xuanzhi api with OpenClaw Gateway', () => {
 
     expect(message.contextFileIds).toEqual([file.id]);
 
-    const chatSendCall = gateway.calls.find((call) => call.method === 'chat.send');
-    expect(chatSendCall?.params).toMatchObject({
-      sessionKey: expect.stringContaining(task.id),
+    await waitForCondition(() => {
+      const chatSendCall = gateway.calls.find((call) => call.method === 'chat.send');
+      expect(chatSendCall?.params).toMatchObject({
+        sessionKey: expect.stringContaining(task.id),
+      });
+      expect((chatSendCall?.params as { message?: string }).message).toContain('Summarize the attached file');
+      expect((chatSendCall?.params as { message?: string }).message).toContain('brief');
+      expect((chatSendCall?.params as { message?: string }).message).toContain('Use this brief as source material.');
     });
-    expect((chatSendCall?.params as { message?: string }).message).toContain('Summarize the attached file');
-    expect((chatSendCall?.params as { message?: string }).message).toContain('brief.md');
-    expect((chatSendCall?.params as { message?: string }).message).toContain('Use this brief as source material.');
   });
 });

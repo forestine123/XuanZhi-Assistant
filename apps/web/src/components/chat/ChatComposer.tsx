@@ -5,10 +5,11 @@ import { Button, Tooltip } from '../ui';
 import { Icon } from '../ui/icons';
 import type { ComposerVariant } from '../../types/chat';
 
-export type ComposerCommand = '/compact' | '/reset' | '/help';
+export type ComposerCommand = '/compact' | '/status' | '/tools compact' | '/reset soft';
 
 type ChatComposerProps = {
   commandsEnabled?: boolean;
+  agentName?: string;
   value: string;
   variant: ComposerVariant;
   onChange: (value: string) => void;
@@ -18,11 +19,13 @@ type ChatComposerProps = {
 
 const commandItems: Array<{ command: ComposerCommand; label: string; icon: ReactNode }> = [
   { command: '/compact', label: '压缩上下文', icon: <Icon name="database" /> },
-  { command: '/reset', label: '重置会话', icon: <Icon name="x-circle" /> },
-  { command: '/help', label: '指令帮助', icon: <Icon name="bulb" /> },
+  { command: '/status', label: '查看状态', icon: <Icon name="clock" /> },
+  { command: '/tools compact', label: '工具清单', icon: <Icon name="tool" /> },
+  { command: '/reset soft', label: '软重置', icon: <Icon name="x-circle" /> },
 ];
 
 export function ChatComposer({
+  agentName,
   commandsEnabled = true,
   value,
   variant,
@@ -39,10 +42,10 @@ export function ChatComposer({
               className="sender-command-button"
               disabled={!commandsEnabled}
               type="button"
+              aria-label={item.label}
               onClick={() => onCommand?.(item.command)}
             >
               {item.icon}
-              <span>{item.label}</span>
             </button>
           </Tooltip>
         ))}
@@ -67,7 +70,7 @@ export function ChatComposer({
         value={value}
         onChange={onChange}
         onSubmit={onSubmit}
-        placeholder="给玄知助手发送消息"
+        placeholder={`给${agentName?.trim() || '玄知助手'}发送消息`}
         submitType="enter"
         autoSize={{ minRows: 1, maxRows: 5 }}
         allowSpeech

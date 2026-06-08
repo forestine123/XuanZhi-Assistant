@@ -37,6 +37,9 @@ test('assistant shell exposes the QClaw-style workspace structure', async () => 
   assert.doesNotMatch(sidebar, /<BrandLockup \/>/, 'expected the sidebar brand lockup to be removed');
   assert.match(sidebar, /collapsed-toolbar-button/, 'expected collapsed sidebar toolbar buttons');
   assert.match(assistantCss, /\.assistant-sidebar\.is-rail-only \.collapsed-toolbar-button/, 'expected collapsed state to reveal rail toolbar actions');
+  assert.match(sidebar, /collapsed-new-chat-button/, 'expected collapsed new-chat action to live in the sidebar rail');
+  assert.doesNotMatch(header, /collapsed-new-chat-wrap|collapsed-new-chat-trigger/, 'expected no duplicate collapsed new-chat action in the workspace header');
+  assert.doesNotMatch(assistantCss, /\.collapsed-new-chat-wrap|\.collapsed-new-chat-trigger/, 'expected duplicate header new-chat styles to be removed');
   assert.match(assistantCss, /--nav-rail-width:\s*68px/, 'expected a fixed narrow rail token');
   assert.match(assistantCss, /grid-template-columns:\s*var\(--nav-rail-width\) var\(--agent-sidebar-width\)/, 'expected rail + agent list columns');
 });
@@ -163,6 +166,18 @@ test('task streams are isolated when switching conversations', async () => {
   assert.doesNotMatch(chatCanvas, /typing:\s*\{\s*effect:\s*'typing'/, 'expected historical assistant messages not to replay typing on conversation switch');
 });
 
+test('chat canvas stays pinned to the latest message while streaming', async () => {
+  const chatCanvas = await read('src/components/chat/ChatCanvas.tsx');
+  const chatCss = await read('src/styles/chat.css');
+
+  assert.match(chatCanvas, /bottomAnchorRef/, 'expected a bottom scroll anchor for restored conversations');
+  assert.match(chatCanvas, /scrollIntoView\(\{\s*block:\s*'end'\s*\}\)/, 'expected message updates to scroll to the bottom');
+  assert.match(chatCanvas, /messageScrollKey/, 'expected streaming content changes to trigger bottom scrolling');
+  assert.match(chatCanvas, /ResizeObserver/, 'expected growing assistant content to keep following the bottom');
+  assert.match(chatCanvas, /isPinnedToBottomRef/, 'expected resize scrolling to avoid stealing the viewport while reading history');
+  assert.match(chatCss, /chat-scroll-anchor/, 'expected the bottom anchor to have stable layout styling');
+});
+
 test('assistant messages render model markdown instead of raw markdown text', async () => {
   const chatCanvas = await read('src/components/chat/ChatCanvas.tsx');
   const assistantMessage = await read('src/components/chat/AssistantMessageContent.tsx');
@@ -231,6 +246,12 @@ test('assistant execution details are normalized into user-facing message sectio
   assert.match(normalize, /已执行命令/, 'expected exec events to be mapped');
   assert.match(normalize, /extractCodeBlocks/, 'expected code block extraction');
   assert.match(normalize, /extractRunResult/, 'expected run result extraction');
+  assert.match(normalize, /context\\.compiled/, 'expected OpenClaw context trace lines to be filtered');
+  assert.match(normalize, /tool_use\|tool_result/, 'expected raw OpenClaw tool trace lines to be filtered');
+  assert.match(normalize, /tool_call\|function_call/, 'expected raw OpenClaw XML tool payloads to be filtered');
+  assert.match(normalize, /stripRawToolPayloads/, 'expected raw tool payloads to be removed before rendering');
+  assert.match(normalize, /rawMessage\.toolCalls/, 'expected structured OpenClaw tool calls to drive execution details');
+  assert.match(normalize, /normalizeToolCallStep/, 'expected tool call blocks to normalize without text guessing');
   assert.doesNotMatch(normalize, /未知操作完成/, 'expected normalize layer not to emit unknown-operation copy');
 
   assert.match(codeCard, /复制/, 'expected code cards to include a copy action');
@@ -338,7 +359,7 @@ test('OpenClaw session behavior is added without replacing the main UI surface',
   assert.match(shell, /agentApi\.createConversation/, 'expected new conversations to create OpenClaw child sessions');
   assert.match(shell, /activeAgentTasks\.filter\(\(task\) => !isMainTask\(task\)\)/, 'expected main sessions to stay out of the normal conversation list');
   assert.match(shell, /submitCommand/, 'expected command messages to flow through the existing composer path');
-  assert.match(shell, /command === '\/reset'/, 'expected reset to ask for confirmation before sending');
+  assert.match(shell, /command === '\/reset soft'/, 'expected soft reset to ask for confirmation before sending');
   assert.match(shell, /renderKey=\{token\}/, 'expected existing auth-sensitive chat renderer wiring to remain');
 
   assert.match(sidebar, /assistant-nav-rail/, 'expected existing sidebar rail UI to remain');
@@ -346,7 +367,11 @@ test('OpenClaw session behavior is added without replacing the main UI surface',
   assert.doesNotMatch(sidebar, /onOpenAgentMain/, 'expected no pr-4 sidebar prop rename that rewrites the UI contract');
 
   assert.match(composer, /export type ComposerCommand/, 'expected composer command type');
-  assert.match(composer, /'\/reset'/, 'expected reset command support');
+  assert.match(composer, /'\/compact'/, 'expected compact command support');
+  assert.match(composer, /'\/status'/, 'expected status command support');
+  assert.match(composer, /'\/tools compact'/, 'expected compact tools command support');
+  assert.match(composer, /'\/reset soft'/, 'expected soft reset command support');
+  assert.match(composer, /agentName/, 'expected composer placeholder to use the active agent name');
   assert.match(composer, /sender-footer-actions/, 'expected existing composer actions to remain');
   assert.match(home, /onCommand/, 'expected home composer to pass command callbacks');
 });

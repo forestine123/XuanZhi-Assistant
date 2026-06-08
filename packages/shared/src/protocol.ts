@@ -29,6 +29,15 @@ export type MessagePlanStep = {
   status: 'pending' | 'running' | 'done' | 'error';
 };
 
+export type MessageToolCall = {
+  id: string;
+  name: string;
+  arguments?: unknown;
+  result?: string;
+  isError?: boolean;
+  status: 'running' | 'done' | 'error';
+};
+
 export type Task = {
   id: string;
   userId: string;
@@ -49,8 +58,10 @@ export type Message = {
   role: 'user' | 'assistant' | 'system';
   content: string;
   contextFileIds?: string[];
+  parentMessageId?: string;
   status?: MessageStatus;
   planSteps?: MessagePlanStep[];
+  toolCalls?: MessageToolCall[];
   planFooter?: string;
   createdAt: string;
 };
@@ -349,5 +360,7 @@ export type SessionMessage = {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  parentMessageId?: string;
+  toolCalls?: MessageToolCall[];
   createdAt: string;
 };

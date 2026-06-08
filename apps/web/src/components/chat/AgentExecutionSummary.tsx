@@ -48,6 +48,10 @@ function statusTagColor(steps: AgentStep[]) {
   return 'success';
 }
 
+function previewText(value: string) {
+  return value.replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
 export function AgentExecutionSummary({ steps, mode = 'standard' }: AgentExecutionSummaryProps) {
   const [open, setOpen] = useState(mode === 'debug');
 
@@ -75,6 +79,7 @@ export function AgentExecutionSummary({ steps, mode = 'standard' }: AgentExecuti
               <StatusIcon status={step.status} />
               <span className="agent-step-text">{formatAgentStep(step)}</span>
               {step.durationMs ? <span className="agent-step-duration">{step.durationMs}ms</span> : null}
+              {step.result ? <span className="agent-step-result">{previewText(step.result)}</span> : null}
               {mode === 'debug' ? (
                 <details className="agent-step-debug">
                   <summary>调试信息</summary>

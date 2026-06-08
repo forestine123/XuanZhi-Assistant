@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { loadRuntimeEnv } from '../config/env.js';
 
 const DEFAULT_OPENCLAW_WORKSPACE_ROOT = join(homedir(), '.openclaw');
+type WorkspaceEnv = Record<string, string | undefined>;
 
 function sanitizeWorkspaceSegment(value: string) {
   return value
@@ -14,12 +15,12 @@ function sanitizeWorkspaceSegment(value: string) {
     .slice(0, 80);
 }
 
-export function getOpenClawWorkspaceRoot() {
-  return loadRuntimeEnv().OPENCLAW_WORKSPACE_ROOT?.trim() || DEFAULT_OPENCLAW_WORKSPACE_ROOT;
+export function getOpenClawWorkspaceRoot(env: WorkspaceEnv = loadRuntimeEnv()) {
+  return env.OPENCLAW_WORKSPACE_ROOT?.trim() || DEFAULT_OPENCLAW_WORKSPACE_ROOT;
 }
 
-export function createXuanzhiWorkspacePath(username: string) {
-  const root = getOpenClawWorkspaceRoot().replace(/\/+$/, '');
+export function createXuanzhiWorkspacePath(username: string, env?: WorkspaceEnv) {
+  const root = getOpenClawWorkspaceRoot(env).replace(/\/+$/, '');
   const safeUsername = sanitizeWorkspaceSegment(username) || 'user';
   if (safeUsername.toLowerCase() === 'main') {
     return `${root}/workspace`;

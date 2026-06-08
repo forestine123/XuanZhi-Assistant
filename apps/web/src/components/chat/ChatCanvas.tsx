@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Bubble } from '@ant-design/x';
 
 import type { Message } from '../../types/protocol';
@@ -43,6 +43,9 @@ type ChatCanvasProps = {
 };
 
 export function ChatCanvas({ messages, renderKey, onCopyMessage, onEditMessage }: ChatCanvasProps) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
+  const isPinnedToBottomRef = useRef(true);
   const bubbleItems = useMemo(
     () =>
       messages.map((message) => {
@@ -72,10 +75,81 @@ export function ChatCanvas({ messages, renderKey, onCopyMessage, onEditMessage }
       }),
     [messages, onCopyMessage, onEditMessage, renderKey],
   );
+  const messageScrollKey = useMemo(
+    () => messages
+      .map((message) => [
+        message.id,
+        message.status ?? '',
+        message.content.length,
+        message.planSteps?.length ?? 0,
+        message.toolCalls?.map((toolCall) => `${toolCall.id}:${toolCall.status}:${toolCall.result?.length ?? 0}`).join(',') ?? '',
+      ].join(':'))
+      .join('|'),
+    [messages],
+  );
+
+  const findScrollParent = useCallback((node: HTMLElement | null): HTMLElement | Window => {
+    let current = node?.parentElement;
+    while (current) {
+      const style = window.getComputedStyle(current);
+      if (/(auto|scroll)/.test(`${style.overflowY} ${style.overflow}`)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    return window;
+  }, []);
+
+  const updatePinnedToBottom = useCallback(() => {
+    const scrollParent = findScrollParent(canvasRef.current);
+    const threshold = 80;
+    if (!(scrollParent instanceof HTMLElement)) {
+      const scrollTop = window.scrollY;
+      const viewportHeight = window.innerHeight;
+      const scrollHeight = document.documentElement.scrollHeight;
+      isPinnedToBottomRef.current = scrollHeight - scrollTop - viewportHeight <= threshold;
+      return;
+    }
+
+    isPinnedToBottomRef.current = (
+      scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight <= threshold
+    );
+  }, [findScrollParent]);
+
+  const scrollToBottom = useCallback(() => {
+    bottomAnchorRef.current?.scrollIntoView({ block: 'end' });
+    isPinnedToBottomRef.current = true;
+  }, []);
+
+  useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(scrollToBottom);
+    return () => window.cancelAnimationFrame(frame);
+  }, [messageScrollKey, renderKey, scrollToBottom]);
+
+  useEffect(() => {
+    const scrollParent = findScrollParent(canvasRef.current);
+    updatePinnedToBottom();
+    scrollParent.addEventListener('scroll', updatePinnedToBottom, { passive: true });
+    return () => scrollParent.removeEventListener('scroll', updatePinnedToBottom);
+  }, [findScrollParent, updatePinnedToBottom]);
+
+  useEffect(() => {
+    const node = canvasRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return undefined;
+
+    const observer = new ResizeObserver(() => {
+      if (isPinnedToBottomRef.current) {
+        window.requestAnimationFrame(scrollToBottom);
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
 
   return (
-    <div className="chat-canvas">
+    <div className="chat-canvas" ref={canvasRef}>
       <Bubble.List items={bubbleItems} role={bubbleRoles} autoScroll className="bubble-list" />
+      <div className="chat-scroll-anchor" ref={bottomAnchorRef} aria-hidden="true" />
     </div>
   );
 }

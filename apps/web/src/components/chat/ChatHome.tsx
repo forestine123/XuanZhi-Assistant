@@ -4,6 +4,7 @@ import { promptItems } from '../../data/assistantData';
 import { ChatComposer, type ComposerCommand } from './ChatComposer';
 
 type ChatHomeProps = {
+  agentName?: string;
   inputValue: string;
   onInputChange: (value: string) => void;
   onCommand?: (command: ComposerCommand) => void;
@@ -11,7 +12,7 @@ type ChatHomeProps = {
   onSubmitMessage: (value: string) => void;
 };
 
-export function ChatHome({ inputValue, onInputChange, onCommand, onPromptSelect, onSubmitMessage }: ChatHomeProps) {
+export function ChatHome({ agentName, inputValue, onInputChange, onCommand, onPromptSelect, onSubmitMessage }: ChatHomeProps) {
   return (
     <div className="home-canvas">
       <div className="home-title-wrap">
@@ -32,6 +33,7 @@ export function ChatHome({ inputValue, onInputChange, onCommand, onPromptSelect,
       />
 
       <ChatComposer
+        agentName={agentName}
         value={inputValue}
         variant="home"
         onChange={onInputChange}

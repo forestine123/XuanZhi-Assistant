@@ -1,4 +1,4 @@
-import type { Message, MessagePlanStep } from '../types/protocol';
+import type { Message, MessagePlanStep, MessageToolCall } from '../types/protocol';
 import { apiUrl } from '../services/apiClient';
 import { getAuthToken } from '../stores/authStore';
 
@@ -15,6 +15,9 @@ export type AgentStep = {
   stderr?: string;
   exitCode?: number;
   durationMs?: number;
+  arguments?: unknown;
+  result?: string;
+  isError?: boolean;
 };
 
 export type AgentExecutionMode = 'simple' | 'standard' | 'debug';
@@ -76,6 +79,8 @@ const downloadableExtensions = [
   'zip',
 ];
 const markdownAssetPattern = /(!?)\[([^\]]*)\]\(([^)]*)\)/g;
+const rawToolBlockPattern = /```(?:json|xml)?\s*[\r\n][\s\S]*?(?:"(?:tool_use|tool_result|tool_call|function_call|function_result|toolName|toolCallId|function_name)"|<\/?(?:tool_call|function_call|tool_calls|function_calls)\b)[\s\S]*?```/gi;
+const rawToolXmlPattern = /<(tool_call|function_call|tool_calls|function_calls)\b[\s\S]*?<\/\1>/gi;
 const bareFilePathPattern = /(?:^|[\s"'`(（])((?:\\\\wsl(?:\.localhost)?\\[^\s"'`<>]+|[a-zA-Z]:[\\/][^\s"'`<>]+|\/[^\s"'`<>]+|\.{1,2}\/[^\s"'`<>]+|[\w.-]+(?:[\\/][\w .-]+)+)\.(?:csv|docx|gif|html|jpe?g|json|md|pdf|png|pptx|py|svg|ts|tsx|txt|webp|xlsx|zip))(?:$|[\s"'`,)）])/gi;
 
 function normalizeWhitespace(value: string) {
@@ -127,9 +132,33 @@ function isInternalEventLine(line: string) {
   if (/^Tool output\b/i.test(value)) return true;
   if (/^(rawName|stdout|stderr|exitCode)\b/i.test(value)) return true;
   if (/^exec\s*[:：]\s*command\s+run\b/i.test(value)) return true;
+  if (/^(context\.compiled|trace\.metadata|session\.(?:started|updated|ended))\b/i.test(value)) return true;
+  if (/^(tool_use|tool_result|function_call|function_result)\b/i.test(value)) return true;
+  if (/^\{.*"(?:tool_use|tool_result|function_call|context\.compiled|trace\.metadata)"/i.test(value)) return true;
+  if (/^\{.*"(?:tool_call|toolName|toolCallId|function_name|arguments|args|params)"/i.test(value)) return true;
+  if (/^<\/?(?:tool_call|function_call|tool_calls|function_calls)\b/i.test(value)) return true;
+  if (/^(?:Tool call|Tool result|Function call|Function result|Arguments|Parameters)\b/i.test(value)) return true;
   if (/^(write|read|exec|search|edit|install|test)\s*完成$/i.test(value)) return true;
   if (/^未知操作\s*完成$/u.test(value)) return true;
   return false;
+}
+
+function summarizeToolArguments(toolCall: MessageToolCall): string | undefined {
+  const args = toolCall.arguments;
+  if (!args || typeof args !== 'object') return undefined;
+  const record = args as Record<string, unknown>;
+  const path = typeof record.path === 'string' ? record.path.split(/[\\/]/).at(-1) : undefined;
+  const command = typeof record.command === 'string' ? record.command : undefined;
+  const query = typeof record.query === 'string' ? record.query : undefined;
+  const pattern = typeof record.pattern === 'string' ? record.pattern : undefined;
+  return command || path || query || pattern;
+}
+
+function stripRawToolPayloads(content: string) {
+  return content
+    .replace(rawToolBlockPattern, '')
+    .replace(rawToolXmlPattern, '')
+    .replace(/<\/?(?:tool_call|function_call|tool_calls|function_calls)[^>]*>/gi, '');
 }
 
 function extractLanguage(meta: string): string | undefined {
@@ -340,7 +369,8 @@ function removeRunResultSection(content: string) {
 }
 
 export function extractFinalAnswer(content: string, taskId?: string): string {
-  const withoutCode = removeRunResultSection(content).replace(codeFencePattern, '').trim();
+  const withoutRawPayloads = stripRawToolPayloads(content);
+  const withoutCode = removeRunResultSection(withoutRawPayloads).replace(codeFencePattern, '').trim();
   const filtered = withoutCode
     .split(/\r?\n/)
     .filter((line) => !isInternalEventLine(line))
@@ -373,6 +403,32 @@ export function formatAgentStep(step: AgentStep): string {
   return '已完成一个系统步骤';
 }
 
+export function normalizeToolCallStep(toolCall: MessageToolCall): AgentStep {
+  const argumentSummary = summarizeToolArguments(toolCall);
+  const rawName = argumentSummary ? `${toolCall.name}: ${argumentSummary}` : toolCall.name;
+  const command = toolCall.name === 'exec' ? argumentSummary : extractCommandFromRawName(rawName);
+  const type = inferStepType(rawName, command);
+  const normalized: AgentStep = {
+    id: toolCall.id,
+    type,
+    rawName,
+    command,
+    status: toolCall.status === 'error' || toolCall.isError
+      ? 'error'
+      : toolCall.status === 'running'
+        ? 'running'
+        : 'success',
+    arguments: toolCall.arguments,
+    result: toolCall.result,
+    isError: toolCall.isError,
+  };
+
+  return {
+    ...normalized,
+    title: formatAgentStep(normalized),
+  };
+}
+
 export function normalizeAgentStep(step: MessagePlanStep): AgentStep {
   const rawName = normalizeWhitespace(step.text);
   const command = extractCommandFromRawName(rawName);
@@ -392,11 +448,14 @@ export function normalizeAgentStep(step: MessagePlanStep): AgentStep {
 }
 
 export function normalizeAgentMessage(rawMessage: Message): NormalizedAgentMessage {
-  const steps = rawMessage.planSteps?.map(normalizeAgentStep) ?? [];
-  const codeBlocks = extractCodeBlocks(rawMessage.content, steps);
-  const generatedFiles = extractGeneratedFiles(rawMessage.content, rawMessage.taskId);
-  const runResult = extractRunResult(rawMessage.content);
-  const finalAnswer = extractFinalAnswer(rawMessage.content, rawMessage.taskId);
+  const toolSteps = rawMessage.toolCalls?.map(normalizeToolCallStep) ?? [];
+  const planSteps = rawMessage.planSteps?.map(normalizeAgentStep) ?? [];
+  const steps = toolSteps.length > 0 ? toolSteps : planSteps;
+  const sanitizedContent = stripRawToolPayloads(rawMessage.content);
+  const codeBlocks = extractCodeBlocks(sanitizedContent, steps);
+  const generatedFiles = extractGeneratedFiles(sanitizedContent, rawMessage.taskId);
+  const runResult = steps.length > 0 ? undefined : extractRunResult(sanitizedContent);
+  const finalAnswer = extractFinalAnswer(sanitizedContent, rawMessage.taskId);
   const copyContent = [finalAnswer, ...codeBlocks.map((block) => block.code), runResult?.stdout, runResult?.stderr]
     .filter(Boolean)
     .join('\n\n');

@@ -2,6 +2,8 @@ import type { Agent, AgentEventStatus, MessagePlanStep, MessageStatus, Task } fr
 
 import type { MemoryStore } from '../repositories/memoryStore.js';
 import type { StreamHub } from '../realtime/streamHub.js';
+import { toolCallToPlanStep } from '../services/sessionService.js';
+import type { SessionService } from '../services/sessionService.js';
 import { getOpenClawClient } from './openclawClient.js';
 import { syncAgentProfileFiles } from './profileFiles.js';
 import { createXuanzhiWorkspacePath } from './workspace.js';
@@ -102,22 +104,63 @@ function upsertStep(
 function parseToolData(data: Record<string, unknown>): { id?: string; label: string; detail: string } {
   const id = (data.toolCallId ?? data.callId ?? data.tool_use_id ?? data.id) as string | undefined;
   const label = (data.toolName ?? data.name ?? data.function_name ?? data.tool ?? data.command ?? data.action) as string | undefined;
-  const detail = (data.arguments ?? data.args ?? data.input ?? data.params ?? data.query ?? data.text ?? data.message ?? data.output ?? data.content ?? data.result ?? data.value ?? data.description ?? data.summary ?? data.title ?? data.path ?? data.url ?? data.file ?? data.pattern ?? data.keyword) as string | undefined;
+  const rawDetail = data.arguments ?? data.args ?? data.input ?? data.params ?? data.query ?? data.text ?? data.message ?? data.output ?? data.content ?? data.result ?? data.value ?? data.description ?? data.summary ?? data.title ?? data.path ?? data.url ?? data.file ?? data.pattern ?? data.keyword;
+  const detail = typeof rawDetail === 'string'
+    ? rawDetail
+    : rawDetail && typeof rawDetail === 'object'
+      ? JSON.stringify(rawDetail)
+      : undefined;
   return {
     id: typeof id === 'string' ? id : undefined,
-    label: typeof label === 'string' ? label.replace(/^[^:]+:/, '') : '未知操作',
+    label: typeof label === 'string' ? label.replace(/^[^:]+:/, '') : 'OpenClaw tool',
     detail: typeof detail === 'string' ? detail.slice(0, 200) : '',
   };
 }
 
+function isToolErrorData(data: Record<string, unknown>) {
+  if (data.isError === true) return true;
+  if (data.status === 'error' || data.state === 'error') return true;
+  if (typeof data.error === 'string' && data.error.trim()) return true;
+  if (typeof data.errorMessage === 'string' && data.errorMessage.trim()) return true;
+  for (const key of ['result', 'output', 'content', 'message', 'data']) {
+    const value = data[key];
+    if (typeof value === 'string') {
+      if (/"(?:status|state)"\s*:\s*"error"/i.test(value)) return true;
+      if (/"(?:error|errorMessage)"\s*:\s*"[^"]+"/i.test(value)) return true;
+      try {
+        const parsed = JSON.parse(value) as unknown;
+        if (parsed && typeof parsed === 'object' && isToolErrorData(parsed as Record<string, unknown>)) {
+          return true;
+        }
+      } catch {
+        // Plain text result; regex checks above are enough.
+      }
+    }
+    if (value && typeof value === 'object' && isToolErrorData(value as Record<string, unknown>)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isRawToolPayloadText(text: string) {
+  const value = text.trim();
+  if (!value) return false;
+  if (/<\/?(?:tool_call|function_call|tool_calls|function_calls)\b/i.test(value)) return true;
+  if (/^(?:tool_use|tool_result|function_call|function_result|context\.compiled|trace\.metadata)\b/i.test(value)) return true;
+  if (/^\{[\s\S]*"(?:tool_use|tool_result|tool_call|function_call|function_result|context\.compiled|trace\.metadata|toolCallId|toolName|function_name)"[\s\S]*\}$/i.test(value)) return true;
+  return false;
+}
+
 function extractChatText(payload: ChatEventPayload): string | null {
-  return (
+  const text = (
     payload.message?.content
       ?.filter((c) => c.type === 'text')
       .map((c) => c.text ?? '')
       .join('')
       .trim() || null
   );
+  return text && !isRawToolPayloadText(text) ? text : null;
 }
 
 function getAgentDisplayName(agent: AgentHandle) {
@@ -191,12 +234,13 @@ function createAgentHelpers(task: Task, store: MemoryStore, stream: StreamHub) {
 
     publishEvent,
 
-    createStreamingMessage(): string {
+    createStreamingMessage(parentMessageId?: string): string {
       const msg = store.addMessage({
         userId: task.userId,
         taskId: task.id,
         role: 'assistant',
         content: '',
+        parentMessageId,
         status: 'streaming',
       });
       stream.broadcast(task.id, { type: 'message.created', data: msg });
@@ -367,16 +411,33 @@ function streamResponse(
     let accumulatedText = '';
     let planSteps: MessagePlanStep[] = [];
     let stepCounter = 0;
+    let finalizationTimer: ReturnType<typeof setTimeout> | undefined;
 
     const timer = setTimeout(() => {
       unsubChat();
       unsubAgent();
+      if (finalizationTimer) clearTimeout(finalizationTimer);
       console.warn(`[OpenClawAgent] response timeout for task ${taskId}`);
       resolve(accumulatedText || null);
     }, ASSISTANT_RESPONSE_TIMEOUT);
 
     const broadcastSteps = () => {
       helpers.updateStreamingMessage(messageId, accumulatedText, planSteps);
+    };
+
+    const finalizeAfterToolDrain = () => {
+      finalizationTimer = setTimeout(() => {
+        unsubAgent();
+        // Chat final can arrive just before the final tool_result event. After a
+        // short drain window, close anything that did not receive an explicit error.
+        if (planSteps.some((s) => s.status === 'running')) {
+          planSteps = planSteps.map((s) =>
+            s.status === 'running' ? { ...s, status: 'done' as const } : s,
+          );
+        }
+        helpers.finalizeMessage(messageId, accumulatedText, planSteps);
+        resolve(accumulatedText);
+      }, 50);
     };
 
     // ── Chat stream (text deltas) ──
@@ -396,17 +457,9 @@ function streamResponse(
       if (payload.state === 'final') {
         clearTimeout(timer);
         unsubChat();
-        unsubAgent();
         const text = extractChatText(payload);
         if (text) accumulatedText = text;
-        // Mark any remaining "running" steps as "done"
-        if (planSteps.some((s) => s.status === 'running')) {
-          planSteps = planSteps.map((s) =>
-            s.status === 'running' ? { ...s, status: 'done' as const } : s,
-          );
-        }
-        helpers.finalizeMessage(messageId, accumulatedText, planSteps);
-        resolve(accumulatedText);
+        finalizeAfterToolDrain();
         return;
       }
 
@@ -414,6 +467,7 @@ function streamResponse(
         clearTimeout(timer);
         unsubChat();
         unsubAgent();
+        if (finalizationTimer) clearTimeout(finalizationTimer);
         const reason = payload.errorMessage ?? `Agent ${payload.state}`;
         console.warn(`[OpenClawAgent] task ${taskId} ${payload.state}: ${reason}`);
         const text = extractChatText(payload);
@@ -481,21 +535,27 @@ function streamResponse(
       const resultStreams = new Set(['tool_result', 'command_output', 'output', 'result']);
       if (resultStreams.has(stream)) {
         const { id, label, detail } = parseToolData(data);
+        const status = isToolErrorData(data) ? 'error' : 'done';
         if (id) {
           const idx = planSteps.findIndex((s) => s.id === id);
           if (idx >= 0) {
-            planSteps[idx] = { ...planSteps[idx], status: 'done' };
+            planSteps[idx] = { ...planSteps[idx], status };
           }
         } else {
           // Mark most recent "running" step as done
           const lastRunning = [...planSteps].reverse().find((s) => s.status === 'running');
           if (lastRunning) {
             planSteps = planSteps.map((s) =>
-              s.id === lastRunning.id ? { ...s, status: 'done' as const } : s,
+              s.id === lastRunning.id ? { ...s, status } : s,
             );
           }
         }
-        helpers.publishEvent('tool.completed', label || '操作完成', 'success', detail);
+        helpers.publishEvent(
+          status === 'error' ? 'tool.error' : 'tool.completed',
+          label || (status === 'error' ? '操作出错' : '操作完成'),
+          status === 'error' ? 'error' : 'success',
+          detail,
+        );
         broadcastSteps();
         return;
       }
@@ -550,16 +610,77 @@ function streamResponse(
 }
 
 function extractRawText(data: Record<string, unknown>): string | null {
-  if (typeof data.text === 'string') return data.text;
-  if (typeof data.content === 'string') return data.content;
-  if (typeof data.message === 'string') return data.message;
-  if (typeof data.delta === 'string') return data.delta;
+  if (typeof data.text === 'string' && !isRawToolPayloadText(data.text)) return data.text;
+  if (typeof data.content === 'string' && !isRawToolPayloadText(data.content)) return data.content;
+  if (typeof data.message === 'string' && !isRawToolPayloadText(data.message)) return data.message;
+  if (typeof data.delta === 'string' && !isRawToolPayloadText(data.delta)) return data.delta;
   if (data.message && typeof data.message === 'object') {
     const m = data.message as Record<string, unknown>;
-    if (typeof m.content === 'string') return m.content;
-    if (typeof m.text === 'string') return m.text;
+    if (typeof m.content === 'string' && !isRawToolPayloadText(m.content)) return m.content;
+    if (typeof m.text === 'string' && !isRawToolPayloadText(m.text)) return m.text;
   }
   return null;
+}
+
+async function applyDiskBackfillToMessage(input: {
+  sessionService?: SessionService;
+  gatewayAgentId: string;
+  sessionKey: string;
+  task: Task;
+  store: MemoryStore;
+  stream: StreamHub;
+  messageId: string;
+  userContent: string;
+}) {
+  const {
+    sessionService,
+    gatewayAgentId,
+    sessionKey,
+    task,
+    store,
+    stream,
+    messageId,
+    userContent,
+  } = input;
+  if (!sessionService) return;
+
+  const normalizedUserContent = userContent.trim().replace(/\s+/g, ' ');
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const sessionId = sessionService.resolveSessionId(gatewayAgentId, sessionKey);
+    if (sessionId) {
+      const sessionMessages = sessionService.readSessionMessages(gatewayAgentId, sessionId);
+      let userIndex = -1;
+      for (let index = sessionMessages.length - 1; index >= 0; index -= 1) {
+        const message = sessionMessages[index];
+        if (
+          message?.role === 'user'
+          && message.content.trim().replace(/\s+/g, ' ') === normalizedUserContent
+        ) {
+          userIndex = index;
+          break;
+        }
+      }
+
+      const assistantMessage = userIndex >= 0
+        ? sessionMessages.slice(userIndex + 1).find((message) => message.role === 'assistant')
+        : undefined;
+      if (assistantMessage?.toolCalls?.length) {
+        const updated = store.updateMessage(task.id, messageId, {
+          content: assistantMessage.content || undefined,
+          status: 'completed' as MessageStatus,
+          toolCalls: assistantMessage.toolCalls,
+          planSteps: assistantMessage.toolCalls.map((toolCall) => toolCallToPlanStep(toolCall)),
+        });
+        if (updated) {
+          stream.broadcast(task.id, { type: 'message.updated', data: updated });
+        }
+        return;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
 }
 
 // ── Single entry point ──
@@ -570,6 +691,8 @@ export async function runOpenClawSession(
   store: MemoryStore,
   stream: StreamHub,
   isFollowup = false,
+  parentMessageId?: string,
+  sessionService?: SessionService,
 ): Promise<void> {
   const client = getOpenClawClient();
   const agent = task.agentId ? store.getAgent(task.agentId) : store.getAgentByUserId(task.userId);
@@ -634,8 +757,18 @@ export async function runOpenClawSession(
     );
 
     // 5. Stream the assistant response + agent events
-    const messageId = helpers.createStreamingMessage();
+    const messageId = helpers.createStreamingMessage(parentMessageId);
     const responseText = await streamResponse(client, session.key, task.id, messageId, helpers);
+    await applyDiskBackfillToMessage({
+      sessionService,
+      gatewayAgentId,
+      sessionKey: session.key,
+      task,
+      store,
+      stream,
+      messageId,
+      userContent: content,
+    });
 
     if (responseText) {
       helpers.publishEvent('agent.answer.created', 'Agent 已生成回复', 'success');

@@ -375,8 +375,8 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
 
   const submitCommand = useCallback(
     (command: ComposerCommand) => {
-      if (command === '/reset') {
-        const confirmed = window.confirm('确定要向当前 OpenClaw 会话发送 /reset 吗？这会让当前会话重新开始上下文。');
+      if (command === '/reset soft') {
+        const confirmed = window.confirm('确定要向当前 OpenClaw 会话发送 /reset soft 吗？这会保留转录记录，并重建后端运行上下文。');
         if (!confirmed) {
           return;
         }
@@ -599,6 +599,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
 
   const activeTask = activeAgentTasks.find((task) => task.id === activeTaskId);
   const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
+  const activeAgentName = activeAgent?.profile?.agentName || activeAgent?.name || '玄知助手';
   const needsAgentSetup = Boolean(pendingInitialSetup && activeAgent && !activeAgent.profile);
   const activeMessages = activeTaskId ? messagesByTask[activeTaskId] ?? [] : [];
   const activeFiles = activeTaskId ? filesByTask[activeTaskId] ?? [] : [];
@@ -686,6 +687,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
             </section>
           ) : (
             <ChatHome
+              agentName={activeAgentName}
               inputValue={inputValue}
               onInputChange={setInputValue}
               onCommand={submitCommand}
@@ -729,6 +731,7 @@ export function AssistantShell({ currentUser, token, onLogout }: AssistantShellP
                 </div>
               ) : null}
               <ChatComposer
+                agentName={activeAgentName}
                 value={inputValue}
                 variant="chat"
                 onChange={setInputValue}
