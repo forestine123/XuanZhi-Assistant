@@ -583,9 +583,11 @@
 
 .assistant-message-content {
   display: flex;
+  min-width: min(100%, 360px);
+  max-width: min(648px, 100%);
   flex-direction: column;
   gap: 14px;
-  width: min(648px, 100%);
+  width: 100%;
 }
 
 .assistant-markdown p {
@@ -685,7 +687,8 @@
 }
 
 .agent-step-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   min-width: 0;
   align-items: flex-start;
   gap: 8px;
@@ -726,13 +729,24 @@
 }
 
 .agent-step-duration {
-  margin-left: auto;
   color: #a1a1aa;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
+.agent-step-result {
+  grid-column: 2 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: #71717a;
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent-step-debug {
+  grid-column: 2 / -1;
   width: 100%;
   color: #71717a;
 }
